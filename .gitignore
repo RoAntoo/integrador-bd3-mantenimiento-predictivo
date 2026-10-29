@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Archivos locales creados por Spark
+artifacts/
+spark-warehouse/
+metastore_db/
+derby.log
