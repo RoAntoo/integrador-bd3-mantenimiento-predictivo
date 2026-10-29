@@ -1,6 +1,6 @@
 # Entrada provisional del módulo de procesamiento
 
-Este documento describe la muestra independiente de Anto para el primer PR.
+Este documento describe la muestra independiente de Anto introducida en el primer PR.
 Es una base de conversación con Leo, responsable de generar los sensores.
 Los nombres, unidades y reglas aquí indicados son provisionales: no representan
 una interfaz definitiva ni el contrato A completo del plan de trabajo.
@@ -32,7 +32,7 @@ Ejemplo de un evento:
 máquinas. Sus valores sirven para probar lectura y tipos; no definen rangos de
 operación industrial ni niveles de riesgo.
 
-## Qué valida esta primera implementación
+## Qué valida el lector estricto del primer PR
 
 El lector utiliza un esquema explícito y modo `FAILFAST`. Rechaza JSON mal
 formado, mediciones incompatibles con el tipo numérico y fechas que no puedan
@@ -47,17 +47,19 @@ su evaluación diferida.
 Es una validación de lectura, no un validador estricto de todos los tipos JSON:
 Spark puede convertir algunos valores al tipo declarado, por ejemplo un
 identificador numérico a texto. El productor debería enviar `machine_id` como
-texto. No se comprueba todavía el catálogo, identificadores vacíos, rangos físicos
-ni valores numéricos especiales como NaN o infinito.
+texto. Este lector no comprueba el catálogo, identificadores vacíos, rangos físicos
+ni valores numéricos especiales como NaN o infinito; el flujo de calidad
+posterior sí rechaza identificadores vacíos y mediciones no finitas.
 
 Los campos adicionales no se incorporan al DataFrame. Los duplicados se conservan.
 Un archivo vacío es válido y produce cero registros. Los desfases horarios
 explícitos se interpretan y se muestran en UTC; la convención propuesta para
 el generador es emitir directamente UTC.
 
-Ante errores se interrumpe el lote; no se eliminan ni corrigen filas en silencio.
-En una próxima entrega se acordará cómo contabilizar y tratar registros inválidos
-para implementar la limpieza solicitada en el plan.
+Ante errores, este lector interrumpe el lote; no elimina ni corrige filas en
+silencio. Para separar filas válidas y rechazadas, conservar las líneas originales
+y obtener métricas se usa el [flujo de calidad](quality_rules.md), que mantiene
+el mismo esquema y las mismas opciones de parseo.
 
 ## Acuerdos pendientes con el generador de Leo
 
@@ -68,7 +70,7 @@ para implementar la limpieza solicitada en el plan.
 | Fechas | Confirmar UTC, precisión temporal y formato de serialización. |
 | Identificadores | Acordar cómo se identifica cada máquina y cómo se comparte su catálogo. |
 | Entrega | Confirmar formato, ubicación y organización de archivos por lote. En este PR se recibe un único archivo local por `--input`. |
-| Calidad | Definir representación de nulos, duplicados, errores y anomalías intencionales. Una lectura anómala puede ser un dato válido. |
+| Calidad | Las reglas técnicas del segundo PR están documentadas en `quality_rules.md`. Sigue pendiente acordar con el generador cómo representará errores y anomalías intencionales; una lectura anómala puede ser válida. |
 | Muestra compartida | Entregar una muestra pequeña y reproducible con cantidad conocida de eventos para probar la integración. |
 
 Para probar otro archivo que cumpla este esquema basta con cambiar `--input`.
