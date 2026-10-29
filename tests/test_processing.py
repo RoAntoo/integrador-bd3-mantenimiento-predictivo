@@ -68,6 +68,17 @@ class ProcessingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "esquema esperado"):
             read_telemetry(self.spark, input_path)
 
+    def test_rejects_single_quoted_json(self):
+        valid_line = SAMPLE_PATH.read_text(encoding="utf-8").splitlines()[0]
+        for invalid_line in (
+            valid_line.replace('"machine_id"', "'machine_id'"),
+            valid_line.replace('"MAQ-001"', "'MAQ-001'"),
+        ):
+            with self.subTest(input=invalid_line):
+                input_path = self.write_input(invalid_line + "\n")
+                with self.assertRaisesRegex(ValueError, "esquema esperado"):
+                    read_telemetry(self.spark, input_path)
+
     def test_rejects_invalid_measurement_or_timestamp(self):
         valid_record = json.loads(SAMPLE_PATH.read_text(encoding="utf-8").splitlines()[0])
         for field, value in (

@@ -23,6 +23,7 @@ def read_telemetry(spark: SparkSession, input_path: str | Path) -> DataFrame:
         telemetry = (
             spark.read.schema(TELEMETRY_SCHEMA)
             .option("mode", "FAILFAST")
+            .option("allowSingleQuotes", "false")
             .option("timestampFormat", "yyyy-MM-dd'T'HH:mm:ss[.SSS]XXX")
             .option("enableDateTimeParsingFallback", "false")
             .json(dataset_path.as_uri())
