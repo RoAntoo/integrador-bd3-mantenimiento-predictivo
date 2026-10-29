@@ -2,17 +2,20 @@
 
 Proyecto grupal de monitoreo industrial y mantenimiento predictivo. El sistema
 previsto combina generación de sensores, procesamiento con PySpark, persistencia
-y visualización. Esta primera implementación corresponde al procesamiento de Anto.
+y visualización.
 
 ## Alcance implementado
 
-Spark se ejecuta localmente, lee un archivo JSONL con esquema explícito, valida
-campos obligatorios y muestra el esquema, hasta 20 registros y la cantidad total.
-Incluye una muestra independiente de cinco lecturas y pruebas con Spark real.
+Spark se ejecuta localmente y lee un archivo JSONL con esquema explícito. El
+lector estricto del primer PR detiene el lote ante errores y muestra los datos.
+El flujo de calidad separa lecturas válidas y rechazadas, conserva la línea
+original y el motivo de cada rechazo, resuelve duplicados por máquina e instante
+y calcula métricas del lote. Incluye una muestra de cinco lecturas y pruebas con
+Spark real.
 
-La limpieza con correcciones o descartes, clasificación de riesgos, estadísticas,
-Machine Learning, exportaciones y conexiones a bases corresponden a entregas
-posteriores. Este módulo no requiere Kafka, cloud ni otros servicios.
+La clasificación de riesgos, estadísticas por máquina, Machine Learning,
+exportaciones y conexiones a bases corresponden a entregas posteriores. Este
+módulo no requiere Kafka, cloud ni otros servicios.
 
 ## Requisitos
 
@@ -51,10 +54,11 @@ En Linux/macOS, seleccionar un JDK 17/21 y usar:
 python3.12 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python -m src.processing.etl --input tests/fixtures/processing_sample.jsonl
-.venv/bin/python -m unittest discover -s tests -p 'test_processing.py' -v
+.venv/bin/python -m src.processing.quality --input tests/fixtures/processing_sample.jsonl
+.venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-## Ejecutar el módulo
+## Ejecutar el lector estricto
 
 En PowerShell, desde la raíz:
 
@@ -79,28 +83,45 @@ Para leer otra muestra local, cambiar el argumento `--input` por su ruta. Si con
 espacios, encerrarla entre comillas. El archivo debe cumplir el
 [contrato provisional](docs/data_contract.md).
 
+## Ejecutar el control de calidad
+
+```powershell
+.\.venv\Scripts\python.exe -m src.processing.quality --input tests/fixtures/processing_sample.jsonl
+```
+
+La muestra incluida devuelve `Recibidos: 5`, `Válidos: 5`, `Rechazados: 0` y
+`Duplicados: 0`. La función `clean_telemetry(spark, input_path)` devuelve dos
+DataFrames (`valid` y `rejected`) y `metrics`. `rejected` incluye `raw_line` y
+`rejection_reasons`; el comando muestra los contadores. La igualdad
+`received = valid + rejected` se cumple para cada lote. Las reglas, motivos y
+decisiones sobre duplicados están en [limpieza y calidad](docs/quality_rules.md).
+
 ## Ejecutar las pruebas
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_processing.py" -v
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-Las pruebas usan `unittest` de Python y una sesión real de Spark local compartida
-por la suite. Verifican lectura y valores de la muestra, esquema, campos ausentes
-o nulos, JSON y fechas inválidos, duplicados, campos adicionales, entrada vacía
-y archivo inexistente. Los casos inválidos pueden imprimir errores de Spark
-esperados por las pruebas; el resultado final debe indicar `OK`.
+Las pruebas usan `unittest` de Python y Spark local. Verifican ambos lectores,
+incluidos campos ausentes o nulos, JSON y fechas inválidos, duplicados idénticos,
+claves con mediciones en conflicto, valores no finitos, métricas, entrada vacía y
+archivo inexistente. Los errores del lector estricto pueden imprimir trazas de
+Spark esperadas por las pruebas; el resultado final debe indicar `OK`.
 
 ## Organización
 
 ```text
 requirements.txt                         Versión de PySpark
 docs/data_contract.md                    Entrada provisional y acuerdos pendientes
+docs/quality_rules.md                    Reglas y métricas de calidad
 src/processing/spark.py                  Sesión local de Spark, dos hilos y UTC
 src/processing/schema.py                 Campos y tipos explícitos
-src/processing/etl.py                    Lectura, validación y ejecución por consola
+src/processing/validation.py             Reglas de lectura compartidas
+src/processing/etl.py                    Lector estricto y ejecución por consola
+src/processing/quality.py                Limpieza, rechazos y métricas
 tests/fixtures/processing_sample.jsonl   Muestra independiente del generador
-tests/test_processing.py                Pruebas de funcionamiento y errores
+tests/test_processing.py                 Pruebas del lector estricto
+tests/test_quality.py                    Pruebas del flujo de calidad
 ```
 
 La muestra está en `tests/fixtures/` para que Leo pueda desarrollar el generador y
