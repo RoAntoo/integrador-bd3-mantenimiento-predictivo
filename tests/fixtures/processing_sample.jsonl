@@ -1,0 +1,5 @@
+{"machine_id":"MAQ-001","timestamp":"2026-10-25T12:00:00Z","temperature":65.5,"vibration":2.1,"pressure":5.0}
+{"machine_id":"MAQ-002","timestamp":"2026-10-25T12:00:00Z","temperature":70.0,"vibration":2.8,"pressure":5.2}
+{"machine_id":"MAQ-001","timestamp":"2026-10-25T12:01:00Z","temperature":66.0,"vibration":2.2,"pressure":5.1}
+{"machine_id":"MAQ-002","timestamp":"2026-10-25T12:01:00Z","temperature":70.5,"vibration":2.7,"pressure":5.3}
+{"machine_id":"MAQ-001","timestamp":"2026-10-25T12:02:00Z","temperature":66.2,"vibration":2.3,"pressure":5.0}
