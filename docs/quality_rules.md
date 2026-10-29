@@ -9,9 +9,11 @@ disponible y conserva sus errores y su comportamiento ante duplicados.
 
 Se lee el archivo como texto, una fila por línea física, para conservar el
 contenido original en `rejected.raw_line`. El separador de línea no forma parte
-de `raw_line`. Una línea vacía cuenta como recibida y se rechaza. Un archivo
-vacío produce todos los contadores en cero. Un archivo inexistente genera
-`FileNotFoundError`, como en el lector estricto.
+de `raw_line`. Cada línea debe contener exactamente un objeto JSON completo;
+otro objeto o texto después del primero causa `PARSE_ERROR`. Una línea vacía
+cuenta como recibida y se rechaza. Un archivo vacío produce todos los contadores
+en cero. Un archivo inexistente genera `FileNotFoundError`, como en el lector
+estricto.
 
 El parseo usa el mismo esquema y las mismas opciones de JSON y fechas que el
 lector estricto, pero en modo `PERMISSIVE` y con una columna interna para
@@ -24,7 +26,7 @@ Para una fila parseada, se aplican estas reglas:
 | Motivo | Condición |
 | --- | --- |
 | `NULL_<CAMPO>` | Falta el campo obligatorio o su valor es `null`. Se usa para los cinco campos del esquema. |
-| `EMPTY_MACHINE_ID` | El identificador solo contiene espacios o está vacío. No se modifica el identificador recibido. |
+| `EMPTY_MACHINE_ID` | El identificador está vacío o solo contiene caracteres de espacio en blanco, incluidas tabulaciones. No se modifica el identificador recibido. |
 | `NON_FINITE_<CAMPO>` | `temperature`, `vibration` o `pressure` es `NaN`, `+Infinity` o `-Infinity`. |
 | `DUPLICATE_KEY` | Copia adicional de una lectura válida con la misma máquina, instante y mediciones. |
 | `CONFLICTING_DUPLICATE_KEY` | Hay mediciones diferentes entre lecturas válidas con la misma máquina e instante. Se rechazan todas las filas de esa clave. |

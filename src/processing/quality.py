@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from functools import reduce
 from pathlib import Path
 
-from pyspark.sql import DataFrame, SparkSession, Window
+from pyspark.sql import Column, DataFrame, SparkSession, Window
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType, StructField, StructType
 
@@ -24,6 +24,64 @@ CORRUPT_RECORD_FIELD = "_corrupt_record"
 QUALITY_SCHEMA = StructType(
     [*TELEMETRY_SCHEMA.fields, StructField(CORRUPT_RECORD_FIELD, StringType(), True)]
 )
+
+
+def _is_complete_json_object(raw_line: Column) -> Column:
+    """Encontrar el cierre del objeto raíz y exigir solo espacios después."""
+    # from_json puede aceptar texto después del primer objeto; se verifica
+    # el cierre de la raíz sin ejecutar una UDF de Python por cada lectura.
+    positions = F.when(
+        F.length(raw_line) > 0, F.sequence(F.lit(1), F.length(raw_line))
+    ).otherwise(F.array().cast("array<int>"))
+    initial = F.struct(
+        F.lit(False).alias("started"),
+        F.lit(False).alias("ended"),
+        F.lit(False).alias("quoted"),
+        F.lit(False).alias("escaped"),
+        F.lit(False).alias("invalid"),
+        F.lit(0).alias("depth"),
+    )
+
+    def scan(state: Column, position: Column) -> Column:
+        char = F.substring(raw_line, position, 1)
+        whitespace = char.isin(" ", "\t", "\r", "\n")
+        before = ~state.started
+        active = state.started & ~state.ended
+        outside_string = active & ~state.quoted
+        start = before & (char == "{")
+        opening = outside_string & (char == "{")
+        closing = outside_string & (char == "}")
+        return F.struct(
+            (state.started | start).alias("started"),
+            (state.ended | (closing & (state.depth == 1))).alias("ended"),
+            F.when(active & (char == '"') & ~state.escaped, ~state.quoted)
+            .otherwise(state.quoted)
+            .alias("quoted"),
+            (active & state.quoted & ~state.escaped & (char == "\\")).alias(
+                "escaped"
+            ),
+            (
+                state.invalid
+                | (before & ~whitespace & ~start)
+                | (state.ended & ~whitespace)
+            ).alias("invalid"),
+            F.when(start, 1)
+            .when(opening, state.depth + 1)
+            .when(closing, state.depth - 1)
+            .otherwise(state.depth)
+            .alias("depth"),
+        )
+
+    return F.aggregate(
+        positions,
+        initial,
+        scan,
+        lambda state: state.started
+        & state.ended
+        & ~state.invalid
+        & ~state.quoted
+        & (state.depth == 0),
+    )
 
 
 @dataclass(frozen=True)
@@ -55,10 +113,12 @@ def _parse_lines(spark: SparkSession, input_path: Path) -> DataFrame:
     return (
         spark.read.text(input_path.as_uri())
         .select(F.col("value").alias("raw_line"))
+        .withColumn("_complete_object", _is_complete_json_object(F.col("raw_line")))
         .withColumn("_parsed", F.from_json("raw_line", QUALITY_SCHEMA, options))
         .withColumn(
             "_parse_error",
-            F.col("_parsed").isNull()
+            ~F.col("_complete_object")
+            | F.col("_parsed").isNull()
             | F.col(f"_parsed.{CORRUPT_RECORD_FIELD}").isNotNull(),
         )
         .select("raw_line", "_parse_error", "_parsed.*")
@@ -77,7 +137,7 @@ def _classify_content(parsed: DataFrame) -> DataFrame:
         F.when(
             parse_ok
             & F.col("machine_id").isNotNull()
-            & (F.trim("machine_id") == ""),
+            & F.col("machine_id").rlike(r"(?U)^\s*$"),
             F.lit("EMPTY_MACHINE_ID"),
         )
     )

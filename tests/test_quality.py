@@ -118,6 +118,34 @@ class QualityTests(unittest.TestCase):
             all(row.rejection_reasons == ["PARSE_ERROR"] for row in result.rejected.collect())
         )
 
+    def test_rejects_trailing_content_after_json_object(self):
+        valid = self.record()
+        lines = [
+            valid,
+            valid + " " + valid,
+            valid + " trailing",
+            valid + ", " + valid,
+            valid + "] " + valid,
+            "[" + valid + "]",
+        ]
+        result = clean_telemetry(self.spark, self.write_lines(lines))
+        self.assert_counts(result, 6, 1, 5, 0)
+        self.assertCountEqual(
+            [row.raw_line for row in result.rejected.collect()], lines[1:]
+        )
+        self.assertTrue(
+            all(row.rejection_reasons == ["PARSE_ERROR"] for row in result.rejected.collect())
+        )
+
+    def test_accepts_nested_extra_field_and_quoted_braces(self):
+        nested = json.dumps(
+            {**BASE_RECORD, "metadata": {"note": 'llave } y comilla " escapada'}},
+            ensure_ascii=False,
+        )
+        padded = " \t" + nested + " \t"
+        result = clean_telemetry(self.spark, self.write_lines([padded]))
+        self.assert_counts(result, 1, 1, 0, 0)
+
     def test_blank_machine_id_and_non_finite_measurements(self):
         lines = [
             self.record(machine_id="   "),
@@ -131,6 +159,21 @@ class QualityTests(unittest.TestCase):
         self.assertEqual(reasons[lines[0]], ["EMPTY_MACHINE_ID"])
         for field, line in zip(("TEMPERATURE", "VIBRATION", "PRESSURE"), lines[1:]):
             self.assertEqual(reasons[line], [f"NON_FINITE_{field}"])
+
+    def test_tab_and_unicode_whitespace_machine_ids_are_rejected(self):
+        lines = [
+            self.record(machine_id="\t"),
+            self.record(machine_id=" \t "),
+            self.record(machine_id="\u2003"),
+        ]
+        result = clean_telemetry(self.spark, self.write_lines(lines))
+        self.assert_counts(result, 3, 0, 3, 0)
+        self.assertTrue(
+            all(
+                row.rejection_reasons == ["EMPTY_MACHINE_ID"]
+                for row in result.rejected.collect()
+            )
+        )
 
     def test_multiple_content_reasons_and_finite_anomaly(self):
         invalid = self.record(machine_id=" ", pressure=None)
