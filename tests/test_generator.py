@@ -21,9 +21,11 @@ from src.ingestion.ingest import (
     ingest_telemetry_batch,
     main as ingest_main,
     read_parquet_partition,
+    validate_and_normalize_record,
 )
 
 try:
+    from pyspark.sql import SparkSession
     from src.processing.etl import read_telemetry
     from src.processing.quality import clean_telemetry
     from src.processing.spark import create_spark_session
@@ -31,6 +33,32 @@ try:
     HAS_PYSPARK = True
 except ModuleNotFoundError:
     HAS_PYSPARK = False
+
+try:
+    import pyarrow.parquet as pq  # noqa: F401
+
+    HAS_PYARROW = True
+except ModuleNotFoundError:
+    HAS_PYARROW = False
+
+HAS_PARQUET_ENGINE = HAS_PYSPARK or HAS_PYARROW
+
+
+def assert_standard_parquet_row_count(root: Path, expected: int) -> None:
+    """Count rows with Spark (or PyArrow), which fails on files without a valid Parquet footer."""
+    if HAS_PYSPARK:
+        spark = SparkSession.builder.getOrCreate()
+        total = sum(
+            spark.read.parquet(str(path)).count()
+            for path in sorted(root.rglob("*.parquet"))
+        )
+        assert total == expected
+    elif HAS_PYARROW:
+        total = sum(
+            pq.read_table(path).num_rows
+            for path in sorted(root.rglob("*.parquet"))
+        )
+        assert total == expected
 
 
 CONTRACT_A_FIELDS = (
@@ -78,6 +106,22 @@ class GeneratorAndIngestionTests(unittest.TestCase):
 
         lines = output_file.read_text(encoding="utf-8").splitlines()
         self.assertEqual(len(lines), 960)
+
+    def test_full_anomaly_rate_allows_all_anomalous_events(self):
+        output_file = self.temp_dir / "all_anomalies.jsonl"
+        summary = generate_telemetry(
+            GenerationConfig(
+                machines=2,
+                days=1,
+                interval=360,
+                seed=42,
+                anomaly_rate=1.0,
+                output=output_file,
+            )
+        )
+        self.assertEqual(summary.total_events, 8)
+        self.assertEqual(summary.anomalous_events, 8)
+        self.assertEqual(summary.normal_events, 0)
 
     def test_deterministic_seed_produces_identical_output(self):
         first_out = self.temp_dir / "run1.jsonl"
@@ -212,6 +256,34 @@ class GeneratorAndIngestionTests(unittest.TestCase):
         self.assertEqual(len(loaded), 12)
         self.assertEqual(loaded[-1].machine_id, "MAQ-012")
 
+    def test_record_validation_milliseconds_and_invalid_fields(self):
+        base = {
+            "machine_id": "MAQ-001",
+            "timestamp": "2026-10-25T12:00:00.125Z",
+            "temperature": 65.5,
+            "vibration": 2.1,
+            "pressure": 5.0,
+            "rpm": 1500,
+            "power_kw": 20.0,
+            "operating_hours": 100.0,
+            "machine_state": "operating",
+        }
+        normalized, part_date = validate_and_normalize_record(json.dumps(base))
+        self.assertEqual(part_date, "2026-10-25")
+        self.assertEqual(normalized["timestamp"], "2026-10-25T12:00:00.125Z")
+
+        for invalid_patch in (
+            {"rpm": float("inf")},
+            {"power_kw": float("nan")},
+            {"operating_hours": float("-inf")},
+            {"machine_state": None},
+            {"machine_state": "broken"},
+        ):
+            payload = {**base, **invalid_patch}
+            with self.assertRaises(ValueError):
+                validate_and_normalize_record(json.dumps(payload))
+
+    @unittest.skipUnless(HAS_PARQUET_ENGINE, "Requiere pyarrow o pyspark para escribir Parquet")
     def test_ingestion_raw_zone_parquet_partitions_and_idempotency(self):
         # Generar lote de 2 días para comprobar múltiples particiones date=YYYY-MM-DD
         batch_jsonl = self.temp_dir / "two_days.jsonl"
@@ -245,6 +317,7 @@ class GeneratorAndIngestionTests(unittest.TestCase):
             self.assertTrue(raw_dir.is_dir())
             self.assertTrue(pq_dir.is_dir())
             part_rows = read_parquet_partition(pq_dir)
+            assert_standard_parquet_row_count(pq_dir, 24)
             self.assertEqual(len(part_rows), 24)
             self.assertTrue(all(r["date"] == part_date for r in part_rows))
 
@@ -254,6 +327,7 @@ class GeneratorAndIngestionTests(unittest.TestCase):
         all_parquet_rows = read_parquet_partition(
             lake_root / "historical" / "telemetry"
         )
+        assert_standard_parquet_row_count(lake_root / "historical" / "telemetry", 48)
         self.assertEqual(len(all_parquet_rows), 48)
 
         manifest_lines = (
@@ -261,6 +335,7 @@ class GeneratorAndIngestionTests(unittest.TestCase):
         )
         self.assertEqual(len(manifest_lines), 1)
 
+    @unittest.skipUnless(HAS_PARQUET_ENGINE, "Requiere pyarrow o pyspark para escribir Parquet")
     def test_ingestion_cli_and_corrupt_record_handling(self):
         mixed_file = self.temp_dir / "mixed.jsonl"
         lake_root = self.temp_dir / "lake_cli"

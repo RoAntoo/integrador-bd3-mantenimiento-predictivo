@@ -1,14 +1,16 @@
 """Ingesta batch reproducible, validación, zona raw e histórico Parquet particionado (LEO-03 / LEO-04)."""
 
 import argparse
-from dataclasses import asdict, dataclass, field
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import hashlib
 import json
 import math
 import os
 from pathlib import Path
-from typing import Any
+import threading
+from typing import Any, Iterator
 
 
 DEFAULT_LAKE_ROOT = Path(__file__).resolve().parents[2] / "artifacts" / "datalake"
@@ -19,6 +21,8 @@ ALTERNATE_NUMERIC_FIELDS = {
     "vibration": "vibration_mm_s",
     "pressure": "pressure_bar",
 }
+VALID_MACHINE_STATES = ("operating", "idle", "stopped")
+_MANIFEST_THREAD_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -65,6 +69,13 @@ def _parse_utc_timestamp(raw_ts: Any) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def _format_utc_millis(timestamp_dt: datetime) -> str:
+    """Formatear un datetime UTC con ancho fijo de tres dígitos de milisegundos."""
+    utc_dt = timestamp_dt.astimezone(timezone.utc)
+    millis = utc_dt.microsecond // 1000
+    return f"{utc_dt.strftime('%Y-%m-%dT%H:%M:%S')}.{millis:03d}Z"
+
+
 def _extract_finite_float(record: dict[str, Any], primary: str, fallback: str) -> float:
     """Extraer una medición numérica finita aceptando nombre corto o Contrato A."""
     raw_val = record.get(primary, record.get(fallback))
@@ -91,7 +102,7 @@ def validate_and_normalize_record(raw_line: str) -> tuple[dict[str, Any], str]:
         raise ValueError("El campo 'machine_id' es obligatorio y no puede estar vacío.")
 
     timestamp_dt = _parse_utc_timestamp(payload.get("timestamp"))
-    iso_utc = timestamp_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    iso_utc = _format_utc_millis(timestamp_dt)
     partition_date = timestamp_dt.strftime("%Y-%m-%d")
 
     temperature = _extract_finite_float(payload, "temperature", "temperature_c")
@@ -99,6 +110,8 @@ def validate_and_normalize_record(raw_line: str) -> tuple[dict[str, Any], str]:
     pressure = _extract_finite_float(payload, "pressure", "pressure_bar")
 
     rpm_raw = payload.get("rpm", 0)
+    if isinstance(rpm_raw, float) and not math.isfinite(rpm_raw):
+        raise ValueError(f"Valor no finito en rpm: {rpm_raw}")
     rpm = int(rpm_raw) if isinstance(rpm_raw, (int, float)) and not isinstance(rpm_raw, bool) else 0
 
     power_raw = payload.get("power_kw", 0.0)
@@ -107,6 +120,8 @@ def validate_and_normalize_record(raw_line: str) -> tuple[dict[str, Any], str]:
         if isinstance(power_raw, (int, float)) and not isinstance(power_raw, bool)
         else 0.0
     )
+    if not math.isfinite(power_kw):
+        raise ValueError(f"Valor no finito en power_kw: {power_kw}")
 
     hours_raw = payload.get("operating_hours", 0.0)
     operating_hours = (
@@ -114,8 +129,15 @@ def validate_and_normalize_record(raw_line: str) -> tuple[dict[str, Any], str]:
         if isinstance(hours_raw, (int, float)) and not isinstance(hours_raw, bool)
         else 0.0
     )
+    if not math.isfinite(operating_hours):
+        raise ValueError(f"Valor no finito en operating_hours: {operating_hours}")
 
-    machine_state = str(payload.get("machine_state", "operating"))
+    machine_state = payload.get("machine_state", "operating") if "machine_state" in payload else "operating"
+    if machine_state not in VALID_MACHINE_STATES:
+        raise ValueError(
+            "El campo 'machine_state' debe ser 'operating', 'idle' o 'stopped'."
+        )
+
     is_anomaly = bool(payload.get("is_anomaly", False))
     anomaly_type = payload.get("anomaly_type")
     if anomaly_type is not None:
@@ -179,24 +201,17 @@ def _write_parquet_partition(records: list[dict[str, Any]], target_file: Path) -
             if target_file.exists():
                 target_file.unlink()
             part_files[0].replace(target_file)
-        for item in temp_dir.glob("*"):
-            item.unlink(missing_ok=True)
-        temp_dir.rmdir()
-        return
+            for item in temp_dir.glob("*"):
+                item.unlink(missing_ok=True)
+            temp_dir.rmdir()
+            return
     except Exception:
         pass
 
-    # 4. Respaldo columnar determinista con cabecera PAR1 + payload comprimido
-    # para entornos donde aún no se instaló pyarrow ni pyspark.
-    import zlib
-
-    payload_bytes = zlib.compress(
-        json.dumps(records, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    raise RuntimeError(
+        f"No Parquet writer available for {target_file}. Install pyarrow, "
+        "pandas with a Parquet engine, or a working PySpark session."
     )
-    with target_file.open("wb") as handle:
-        handle.write(b"PAR1")
-        handle.write(payload_bytes)
-        handle.write(b"PAR1")
 
 
 def read_parquet_partition(parquet_path: str | Path) -> list[dict[str, Any]]:
@@ -226,14 +241,6 @@ def read_parquet_partition(parquet_path: str | Path) -> list[dict[str, Any]]:
         except Exception:
             pass
 
-        raw = file_path.read_bytes()
-        if raw.startswith(b"PAR1") and raw.endswith(b"PAR1"):
-            import zlib
-
-            decompressed = zlib.decompress(raw[4:-4]).decode("utf-8")
-            all_records.extend(json.loads(decompressed))
-            continue
-
         from src.processing.spark import create_spark_session
 
         spark = create_spark_session()
@@ -243,30 +250,63 @@ def read_parquet_partition(parquet_path: str | Path) -> list[dict[str, Any]]:
     return all_records
 
 
+@contextmanager
+def _manifest_lock(lock_path: Path) -> Iterator[None]:
+    """Adquirir un bloqueo exclusivo por lake_root para serializar escrituras al manifiesto."""
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with _MANIFEST_THREAD_LOCK:
+        with lock_path.open("a+b") as lock_file:
+            lock_file.seek(0, os.SEEK_END)
+            if lock_file.tell() == 0:
+                lock_file.write(b"\0")
+                lock_file.flush()
+            lock_file.seek(0)
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+                try:
+                    yield
+                finally:
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
 def _update_manifest(
     manifest_path: Path, entry: dict[str, Any]
 ) -> bool:
     """Registrar el lote en el manifiesto de ingesta manteniendo idempotencia por SHA-256."""
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    existing_entries: list[dict[str, Any]] = []
-    replayed = False
+    lock_path = manifest_path.parent / ".ingestion_manifest.lock"
 
-    if manifest_path.is_file():
-        for line in manifest_path.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            item = json.loads(line)
-            if item.get("sha256") == entry["sha256"]:
-                replayed = True
-            else:
-                existing_entries.append(item)
+    with _manifest_lock(lock_path):
+        existing_entries: list[dict[str, Any]] = []
+        replayed = False
 
-    existing_entries.append(entry)
-    with manifest_path.open("w", encoding="utf-8", newline="\n") as handle:
-        for item in existing_entries:
-            handle.write(json.dumps(item, ensure_ascii=False) + "\n")
+        if manifest_path.is_file():
+            for line in manifest_path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                item = json.loads(line)
+                if item.get("sha256") == entry["sha256"]:
+                    replayed = True
+                else:
+                    existing_entries.append(item)
 
-    return replayed
+        existing_entries.append(entry)
+        with manifest_path.open("w", encoding="utf-8", newline="\n") as handle:
+            for item in existing_entries:
+                handle.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+        return replayed
 
 
 def upload_to_azure_blob(
@@ -312,7 +352,11 @@ def ingest_telemetry_batch(
     strict: bool = False,
     upload_azure: bool = False,
 ) -> IngestionResult:
-    """Validar un archivo JSONL entrante, copiarlo a zona raw y escribir Parquet particionado."""
+    """Validar un archivo JSONL entrante, copiar líneas válidas a zona raw y escribir Parquet.
+
+    En modo permisivo (`strict=False`), las líneas inválidas se contabilizan en `invalid_records`
+    y se omiten del Data Lake (permanecen únicamente en el archivo de entrada original).
+    """
     source = Path(input_path).resolve()
     if not source.is_file():
         raise FileNotFoundError(f"No existe el archivo de entrada para ingesta: {source}")
@@ -361,7 +405,7 @@ def ingest_telemetry_batch(
     parquet_files: list[Path] = []
 
     for part_date in sorted(by_date_raw_lines.keys()):
-        # 1. Zona Raw particionada por fecha
+        # 1. Zona Raw particionada por fecha (conserva las líneas válidas del lote)
         raw_target = (
             lake_dir / "raw" / f"date={part_date}" / f"{batch_tag}.jsonl"
         )
@@ -377,8 +421,9 @@ def ingest_telemetry_batch(
         )
         parquet_target = parquet_dir / f"part-{batch_tag}.parquet"
 
-        # Si ya existen otros archivos parquet en la partición, consolidar sin duplicar claves
+        # Consolidar registros existentes de otros lotes en la misma partición sin duplicar claves
         merged_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+        superseded_files: list[Path] = []
         if parquet_dir.is_dir():
             for existing_pq in sorted(parquet_dir.glob("*.parquet")):
                 if existing_pq == parquet_target:
@@ -386,16 +431,18 @@ def ingest_telemetry_batch(
                 for row in read_parquet_partition(existing_pq):
                     row_key = (str(row["machine_id"]), str(row["timestamp"]))
                     merged_by_key[row_key] = row
+                superseded_files.append(existing_pq)
 
         for row_key, row_val in by_date_records[part_date].items():
             merged_by_key[row_key] = row_val
 
-        # Escribir los registros del lote actual (y limpiar duplicados si se re-ejecuta)
         partition_records = sorted(
-            by_date_records[part_date].values(),
+            merged_by_key.values(),
             key=lambda item: (item["timestamp"], item["machine_id"]),
         )
         _write_parquet_partition(partition_records, parquet_target)
+        for superseded_pq in superseded_files:
+            superseded_pq.unlink(missing_ok=True)
         parquet_files.append(parquet_target)
 
     min_ts = min(timestamps) if timestamps else None

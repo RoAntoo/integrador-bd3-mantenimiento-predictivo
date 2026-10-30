@@ -102,10 +102,10 @@ def _plan_anomalies(
     if anomaly_rate <= 0.0 or total_events == 0:
         return {}
 
-    target_anomalies = int(round(total_events * anomaly_rate))
+    target_anomalies = round(total_events * anomaly_rate)
     if target_anomalies == 0 and anomaly_rate > 0.0:
         target_anomalies = 1
-    if total_events > 1 and target_anomalies >= total_events:
+    if anomaly_rate < 1.0 and total_events > 1 and target_anomalies >= total_events:
         target_anomalies = total_events - 1
 
     planned: dict[tuple[int, int], tuple[str, int]] = {}

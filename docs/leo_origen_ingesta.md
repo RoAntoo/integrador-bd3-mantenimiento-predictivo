@@ -42,14 +42,14 @@ El script [`src/ingestion/ingest.py`](../src/ingestion/ingest.py) implementa el 
    - Verifica la estructura JSON, tipos numéricos finitos y marcas temporales UTC.
    - Calcula el hash `SHA-256` del lote, tamaño en bytes, conteo de líneas recibidas/válidas/inválidas, máquinas involucradas y rango temporal (`min_timestamp` y `max_timestamp`).
 2. **Zona `raw`**:
-   - Copia las lecturas crudas organizadas por fecha en `<lake_root>/raw/date=YYYY-MM-DD/<batch_tag>.jsonl`.
+   - En modo permisivo, omite las líneas rechazadas (que permanecen únicamente en el archivo de entrada original) y copia las lecturas válidas organizadas por fecha en `<lake_root>/raw/date=YYYY-MM-DD/<batch_tag>.jsonl`.
    - Actualiza de forma idempotente el manifiesto `<lake_root>/raw/_ingestion_manifest.jsonl`.
 3. **Zona `historical` en formato Parquet particionado (`date=YYYY-MM-DD`)**:
    - Escribe los registros validados y deduplicados por `(machine_id, timestamp)` en `<lake_root>/historical/telemetry/date=YYYY-MM-DD/part-<batch_tag>.parquet`.
-   - **Idempotencia**: volver a ejecutar la ingesta sobre el mismo lote detecta el `SHA-256` previo, sobrescribe limpiamente el archivo de partición del lote y no duplica filas ni entradas en el manifiesto.
+   - **Idempotencia**: volver a ejecutar la ingesta sobre el mismo lote detecta el `SHA-256` previo, consolida la partición del lote y no duplica filas ni entradas en el manifiesto.
 
 ### Comparativa práctica: JSONL vs. Parquet en el Data Lake
-- **JSONL (Zona `raw`)**: formato semiestructurado orientado a filas y legible por humanos; ideal como aterrizaje inmutable (*landing/raw zone*) para auditoría y reprocesamiento de líneas rechazadas.
+- **JSONL (Zona `raw`)**: formato semiestructurado orientado a filas y legible por humanos; conserva las líneas válidas recibidas en texto plano por fecha junto con el manifiesto de conteos del lote.
 - **Parquet (Zona `historical`)**: almacenamiento columnar comprimido con tipos explícitos. Reduce drásticamente el tamaño en disco, acelera agregaciones analíticas (promedios/máximos sobre columnas puntuales como `temperature_c` o `vibration_mm_s`) y aprovecha el particionado `date=YYYY-MM-DD` (*partition pruning*) para evitar escanear todo el histórico.
 
 ---
@@ -57,7 +57,7 @@ El script [`src/ingestion/ingest.py`](../src/ingestion/ingest.py) implementa el 
 ## 4. Configuración opcional de Azure Blob Storage (`LEO-04`)
 
 La subida al Data Lake en la nube es opcional y nunca almacena credenciales en el código:
-1. Copiar `.env.example` a `.env` (que está excluido en `.gitignore`) o exportar las variables en la terminal:
+1. Exportar las variables en la terminal (el script lee únicamente `os.environ` y no carga archivos `.env`; `.env.example` sirve como referencia de nombres):
    ```powershell
    $env:AZURE_STORAGE_CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...;EndpointSuffix=core.windows.net"
    $env:AZURE_STORAGE_CONTAINER = "datalake"
