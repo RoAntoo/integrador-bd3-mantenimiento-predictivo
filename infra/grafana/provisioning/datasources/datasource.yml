@@ -1,0 +1,17 @@
+apiVersion: 1
+
+datasources:
+  - name: PostgreSQL_BD3
+    type: postgres
+    uid: pg_bd3_uid
+    access: proxy
+    url: postgres:5432
+    user: admin_bd3
+    secureJsonData:
+      password: admin_bd3_pass
+    jsonData:
+      database: mantenimiento_predictivo
+      sslmode: "disable"
+      postgresVersion: 1600
+    isDefault: true
+    editable: true
