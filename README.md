@@ -10,9 +10,36 @@ Spark se ejecuta localmente, lee un archivo JSONL con esquema explícito, valida
 campos obligatorios y muestra el esquema, hasta 20 registros y la cantidad total.
 Incluye una muestra independiente de cinco lecturas y pruebas con Spark real.
 
+<<<<<<< Updated upstream
 La limpieza con correcciones o descartes, clasificación de riesgos, estadísticas,
 Machine Learning, exportaciones y conexiones a bases corresponden a entregas
 posteriores. Este módulo no requiere Kafka, cloud ni otros servicios.
+=======
+El PR #3 agrega estadísticas por máquina y ventanas UTC de cinco minutos, y un
+semáforo configurable sobre máximos de la última ventana disponible. Es una
+clasificación académica por reglas, no una predicción de fallas. Conserva los
+DataFrames compatibles con el cargador de Gastón sin conectar bases.
+
+Leo ya aporta generación, catálogo e ingesta JSONL/Parquet; Gastón aporta
+infraestructura, cargadores y dashboard. La integración completa y exportaciones
+quedan para el PR #4. El análisis no requiere servicios externos ni Machine Learning.
+
+## Ejecutar el análisis completo (PR #3)
+
+Con el entorno virtual instalado, desde la raíz en PowerShell:
+
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+$calculatedAt = [DateTime]::UtcNow.ToString("o")
+.\.venv\Scripts\python.exe -m src.processing.analysis --input data/sample/telemetry_sample.jsonl --calculated-at $calculatedAt --thresholds config/risk_thresholds.example.json
+```
+
+Muestra métricas de calidad y hasta 20 filas de cada DataFrame: estadísticas del
+lote, estadísticas por ventana y último riesgo por máquina. No escribe en bases.
+Los esquemas, API Python, configuración, pruebas y limitaciones (incluida presión
+baja deshabilitada) están en [reglas de riesgo](docs/risk_rules.md).
+>>>>>>> Stashed changes
 
 ## Requisitos
 
@@ -90,6 +117,13 @@ por la suite. Verifican lectura y valores de la muestra, esquema, campos ausente
 o nulos, JSON y fechas inválidos, duplicados, campos adicionales, entrada vacía
 y archivo inexistente. Los casos inválidos pueden imprimir errores de Spark
 esperados por las pruebas; el resultado final debe indicar `OK`.
+
+Las pruebas nuevas `test_statistics.py`, `test_risk_rules.py` y `test_analysis.py`
+cubren estadísticas, fronteras inclusivas, prioridades, ventanas, última ventana,
+configuración y entradas vacías/rechazadas. Para ejecutar solo una suite, sustituir
+`test_*.py` por su nombre. El test de almacenamiento de Gastón es una función de
+pytest y **no se ejecuta con unittest**: requiere sus dependencias y las bases
+activas (`python -m pytest tests/test_storage.py -v`).
 
 ## Organización
 

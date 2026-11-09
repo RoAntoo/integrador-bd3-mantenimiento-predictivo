@@ -1,0 +1,5 @@
+{
+  "temperature": {"yellow": 89.5, "red": 94.0},
+  "vibration": {"yellow": 6.0, "red": 6.8},
+  "pressure": {"yellow": 8.0, "red": 8.6}
+}

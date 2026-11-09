@@ -1,4 +1,31 @@
-# Entrada provisional del módulo de procesamiento
+# Contrato del módulo de procesamiento
+
+## Integración confirmada en el PR #3
+
+El generador de Leo ya entrega JSONL con los cinco campos de procesamiento
+descritos abajo. `temperature` equivale a `temperature_c` (°C), `vibration` a
+`vibration_mm_s` (mm/s) y `pressure` a `pressure_bar` (bar). Emite ambas variantes,
+fechas UTC y campos adicionales: `rpm`, `power_kw`, `operating_hours`,
+`machine_state`, `is_anomaly`, `anomaly_type`. El PR #2 mantiene únicamente los
+cinco campos originales en `QualityResult.valid`; no cambia nombres ni incorpora
+etiquetas sintéticas. Los acuerdos provisionales más abajo documentan el origen
+del PR #1 y quedan actualizados por esta sección para el productor actual.
+
+El análisis consume ese DataFrame y produce:
+
+| Dataset | Columnas |
+| --- | --- |
+| `machine_statistics` | `machine_id`, `first_timestamp`, `last_timestamp`, `n_readings`, `avg_temp`, `min_temp`, `max_temp`, `avg_vibration`, `min_vibration`, `max_vibration`, `avg_pressure`, `min_pressure`, `max_pressure` |
+| `sensor_metrics_5m` | `machine_id`, `window_start`, `window_end`, `n_readings` y los mismos nueve estadísticos |
+| `machine_risk_latest` | `machine_id`, `window_start`, `window_end`, `calculated_at`, `risk_level`, `risk_reason` |
+
+Identificadores, niveles y motivos son string; tiempos son timestamp; estadísticos
+double; `n_readings` long. El esquema se conserva sin datos y el conteo solo
+incluye registros válidos deduplicados. Las columnas mínimas del cargador de
+Gastón están presentes; no se conecta almacenamiento en el PR #3. Sus tablas
+actuales no conservan todos los campos adicionales. Ver [reglas de riesgo](risk_rules.md).
+
+## Contexto del contrato inicial
 
 Este documento describe la muestra independiente de Anto para el primer PR.
 Es una base de conversación con Leo, responsable de generar los sensores.
