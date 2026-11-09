@@ -1,0 +1,95 @@
+{
+  "uid": "bd3-machines-dashboard",
+  "title": "Monitoreo y Mantenimiento Predictivo Industrial (BD3)",
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "10s",
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "machine",
+        "label": "Máquina",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "pg_bd3_uid" },
+        "query": "SELECT machine_id FROM machines ORDER BY machine_id;",
+        "includeAll": true,
+        "multi": true,
+        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
+        "refresh": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Semáforo y Ranking de Riesgo por Equipo",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg_bd3_uid" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT r.machine_id, m.machine_name, r.risk_level, r.risk_reason, r.calculated_at FROM machine_risk_latest r JOIN machines m ON r.machine_id = m.machine_id WHERE r.machine_id IN ($machine) ORDER BY CASE r.risk_level WHEN 'ROJO' THEN 1 WHEN 'AMARILLO' THEN 2 ELSE 3 END, r.machine_id;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto" },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "ROJO": { "color": "red", "index": 0, "text": "ROJO (Crítico)" },
+                "AMARILLO": { "color": "yellow", "index": 1, "text": "AMARILLO (Alerta)" },
+                "VERDE": { "color": "green", "index": 2, "text": "VERDE (Normal)" }
+              }
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "risk_level" },
+            "properties": [{ "id": "custom.cellOptions", "value": { "type": "color-background" } }]
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "title": "Evolución de Temperatura (°C) - Ventanas 5m",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "postgres", "uid": "pg_bd3_uid" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT window_start AS \"time\", machine_id AS metric, avg_temp::float AS value FROM sensor_metrics_5m WHERE machine_id IN ($machine) ORDER BY window_start ASC;"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Evolución de Vibración Máxima (mm/s) - Ventanas 5m",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "postgres", "uid": "pg_bd3_uid" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT window_start AS \"time\", machine_id AS metric, max_vibration::float AS value FROM sensor_metrics_5m WHERE machine_id IN ($machine) ORDER BY window_start ASC;"
+        }
+      ]
+    }
+  ]
+}

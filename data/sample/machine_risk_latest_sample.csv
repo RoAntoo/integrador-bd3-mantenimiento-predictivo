@@ -1,0 +1,4 @@
+machine_id,calculated_at,risk_level,risk_reason
+MAQ-001,2026-10-31T10:10:00Z,ROJO,Temperatura (>80C) y vibracion critica (>6.0 mm/s)
+MAQ-002,2026-10-31T10:05:00Z,VERDE,Parametros operativos dentro del rango normal
+MAQ-003,2026-10-31T10:00:00Z,AMARILLO,Vibracion moderada en ascenso (>4.0 mm/s)

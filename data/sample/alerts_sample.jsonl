@@ -1,0 +1,2 @@
+{"machine_id": "MAQ-001", "timestamp": "2026-10-31T10:10:00Z", "level": "ROJO", "description": "Pico severo de temperatura y vibracion detectado"}
+{"machine_id": "MAQ-003", "timestamp": "2026-10-31T10:00:00Z", "level": "AMARILLO", "description": "Advertencia de vibracion por encima del umbral base"}
