@@ -13,12 +13,6 @@ original y el motivo de cada rechazo, resuelve duplicados por máquina e instant
 y calcula métricas del lote. Incluye una muestra de cinco lecturas y pruebas con
 Spark real.
 
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-La limpieza con correcciones o descartes, clasificación de riesgos, estadísticas,
-Machine Learning, exportaciones y conexiones a bases corresponden a entregas
-posteriores. Este módulo no requiere Kafka, cloud ni otros servicios.
-=======
 El PR #3 agrega estadísticas por máquina y ventanas UTC de cinco minutos, y un
 semáforo configurable sobre máximos de la última ventana disponible. Es una
 clasificación académica por reglas, no una predicción de fallas. Conserva los
@@ -43,12 +37,6 @@ Muestra métricas de calidad y hasta 20 filas de cada DataFrame: estadísticas d
 lote, estadísticas por ventana y último riesgo por máquina. No escribe en bases.
 Los esquemas, API Python, configuración, pruebas y limitaciones (incluida presión
 baja deshabilitada) están en [reglas de riesgo](docs/risk_rules.md).
->>>>>>> Stashed changes
-=======
-La clasificación de riesgos, estadísticas por máquina, Machine Learning,
-exportaciones y conexiones a bases corresponden a entregas posteriores. Este
-módulo no requiere Kafka, cloud ni otros servicios.
->>>>>>> origin/main
 
 ## Requisitos
 
