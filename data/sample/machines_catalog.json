@@ -1,0 +1,122 @@
+[
+  {
+    "machine_id": "MAQ-001",
+    "name": "Compresor Tornillo #1",
+    "machine_type": "compressor",
+    "sector": "Sector A - Compresión",
+    "base_temperature_c": 66.0,
+    "base_vibration_mm_s": 2.1,
+    "base_pressure_bar": 5.2,
+    "base_rpm": 1480,
+    "base_power_kw": 22.5,
+    "initial_operating_hours": 1240.0
+  },
+  {
+    "machine_id": "MAQ-002",
+    "name": "Bomba Centrífuga #1",
+    "machine_type": "pump",
+    "sector": "Sector B - Hidráulica",
+    "base_temperature_c": 70.35,
+    "base_vibration_mm_s": 2.65,
+    "base_pressure_bar": 5.54,
+    "base_rpm": 1765,
+    "base_power_kw": 18.28,
+    "initial_operating_hours": 2195.5
+  },
+  {
+    "machine_id": "MAQ-003",
+    "name": "Turbina de Extracción #1",
+    "machine_type": "turbine",
+    "sector": "Sector C - Energía",
+    "base_temperature_c": 75.2,
+    "base_vibration_mm_s": 3.0,
+    "base_pressure_bar": 6.07,
+    "base_rpm": 2880,
+    "base_power_kw": 42.56,
+    "initial_operating_hours": 3510.0
+  },
+  {
+    "machine_id": "MAQ-004",
+    "name": "Motor Trifásico Principal #1",
+    "machine_type": "motor",
+    "sector": "Sector D - Tracción",
+    "base_temperature_c": 65.05,
+    "base_vibration_mm_s": 2.06,
+    "base_pressure_bar": 4.9,
+    "base_rpm": 1495,
+    "base_power_kw": 16.34,
+    "initial_operating_hours": 1115.0
+  },
+  {
+    "machine_id": "MAQ-005",
+    "name": "Prensa Neumática #1",
+    "machine_type": "press",
+    "sector": "Sector E - Estampado",
+    "base_temperature_c": 69.9,
+    "base_vibration_mm_s": 2.61,
+    "base_pressure_bar": 5.94,
+    "base_rpm": 1660,
+    "base_power_kw": 28.12,
+    "initial_operating_hours": 1810.0
+  },
+  {
+    "machine_id": "MAQ-006",
+    "name": "Compresor Tornillo #2",
+    "machine_type": "compressor",
+    "sector": "Sector A - Compresión",
+    "base_temperature_c": 67.75,
+    "base_vibration_mm_s": 2.36,
+    "base_pressure_bar": 5.38,
+    "base_rpm": 1480,
+    "base_power_kw": 23.9,
+    "initial_operating_hours": 1465.0
+  },
+  {
+    "machine_id": "MAQ-007",
+    "name": "Bomba Centrífuga #2",
+    "machine_type": "pump",
+    "sector": "Sector B - Hidráulica",
+    "base_temperature_c": 72.1,
+    "base_vibration_mm_s": 2.92,
+    "base_pressure_bar": 5.71,
+    "base_rpm": 1765,
+    "base_power_kw": 19.68,
+    "initial_operating_hours": 2420.5
+  },
+  {
+    "machine_id": "MAQ-008",
+    "name": "Turbina de Extracción #2",
+    "machine_type": "turbine",
+    "sector": "Sector C - Energía",
+    "base_temperature_c": 74.5,
+    "base_vibration_mm_s": 2.9,
+    "base_pressure_bar": 6.0,
+    "base_rpm": 2880,
+    "base_power_kw": 42.0,
+    "initial_operating_hours": 3735.0
+  },
+  {
+    "machine_id": "MAQ-009",
+    "name": "Motor Trifásico Principal #2",
+    "machine_type": "motor",
+    "sector": "Sector D - Tracción",
+    "base_temperature_c": 64.35,
+    "base_vibration_mm_s": 1.95,
+    "base_pressure_bar": 4.83,
+    "base_rpm": 1495,
+    "base_power_kw": 15.78,
+    "initial_operating_hours": 1340.0
+  },
+  {
+    "machine_id": "MAQ-010",
+    "name": "Prensa Neumática #2",
+    "machine_type": "press",
+    "sector": "Sector E - Estampado",
+    "base_temperature_c": 69.2,
+    "base_vibration_mm_s": 2.5,
+    "base_pressure_bar": 5.87,
+    "base_rpm": 1660,
+    "base_power_kw": 27.56,
+    "initial_operating_hours": 2035.0
+  }
+]
