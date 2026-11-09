@@ -79,8 +79,8 @@ def classify_risk(metrics: DataFrame, calculated_at: datetime,
         levels.append(level)
         reasons.append(F.when(level > 0, F.concat(
             F.lit(f"{label}: máximo "), value.cast("string"), F.lit(f" {unit}; "),
-            F.when(level == 2, F.lit(f"ROJO (>= {rule.red:g} {unit})"))
-             .otherwise(F.lit(f"AMARILLO (>= {rule.yellow:g} {unit})")),
+            F.when(level == 2, F.lit(f"ROJO (>= {rule.red} {unit})"))
+             .otherwise(F.lit(f"AMARILLO (>= {rule.yellow} {unit})")),
         )))
     severity = F.greatest(*levels)
     return latest.select(

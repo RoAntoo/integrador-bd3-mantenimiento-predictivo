@@ -85,6 +85,21 @@ class RiskTests(unittest.TestCase):
                     self.assertIn(str(value), row.risk_reason)
                     self.assertIn(color, row.risk_reason)
 
+    def test_reasons_preserve_full_threshold_precision(self):
+        rules = RiskThresholds(temperature=SensorThresholds(89.5123456789, 94.123456789))
+        valid = self.frame([
+            ("yellow", INSTANT, 89.5123456789, 2., 5.),
+            ("red", INSTANT, 94.123456789, 2., 5.),
+        ])
+        rows = {row.machine_id: row for row in
+                classify_risk(sensor_metrics_5m(valid), INSTANT, rules).collect()}
+        self.assertEqual(rows["yellow"].risk_level, "AMARILLO")
+        self.assertEqual(rows["yellow"].risk_reason,
+                         "Temperatura: máximo 89.5123456789 °C; AMARILLO (>= 89.5123456789 °C)")
+        self.assertEqual(rows["red"].risk_level, "ROJO")
+        self.assertEqual(rows["red"].risk_reason,
+                         "Temperatura: máximo 94.123456789 °C; ROJO (>= 94.123456789 °C)")
+
     def test_latest_window_priority_maximum_and_custom_rules(self):
         earlier = datetime.fromisoformat("2026-11-09T10:00:00Z")
         later = datetime.fromisoformat("2026-11-09T11:00:00Z")
