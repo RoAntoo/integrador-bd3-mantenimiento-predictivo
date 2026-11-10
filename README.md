@@ -19,9 +19,85 @@ clasificación académica por reglas, no una predicción de fallas. Conserva los
 DataFrames compatibles con el cargador de Gastón sin conectar bases.
 
 Leo ya aporta generación, catálogo e ingesta JSONL/Parquet; Gastón aporta
-infraestructura, cargadores y dashboard. La integración completa y exportaciones
-quedan para el PR #4. El análisis no requiere servicios externos ni Machine Learning.
-Este módulo no requiere Kafka, cloud ni otros servicios.
+infraestructura, cargadores y dashboard. El pipeline del PR #4 enlaza estos
+módulos y puede exportar sin servicios o cargar los resultados en Compose.
+
+## Ejecutar el pipeline (PR #4)
+
+Desde la raíz, creá el entorno virtual con Python 3.12, configurá el JDK 17 o
+21 e instalá `requirements.txt` según las instrucciones de instalación más abajo.
+En Windows, con el Python de ese entorno:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.run_demo
+```
+
+El preset genera tres máquinas durante una hora, con semilla 42 e inicio UTC
+fijo. Para procesar otro lote de Leo usá `--input ruta/al/lote.jsonl`. También
+podés pasar `--seed`, `--start-time`, `--thresholds` o `--work-dir`. La
+consola muestra la ruta `artifacts/pipeline/<batch_id>` y los conteos de ingesta
+y de calidad. El directorio contiene el JSONL original, `lake/` con el raw y el
+Parquet histórico de Leo, y `results/` con Parquet curado, rechazos, estadísticas,
+métricas, riesgo y alertas JSONL.
+
+Para cargar y visualizar, iniciá Docker Desktop, copiá `.env.example` a `.env`
+y completá `POSTGRES_PASSWORD`, `MONGO_INITDB_ROOT_PASSWORD` y `GRAFANA_PASSWORD`
+con contraseñas locales. Ejecutá:
+
+```powershell
+docker compose --env-file .env -f infra/docker-compose.yml up -d --wait
+.\.venv\Scripts\python.exe -m scripts.run_demo --load
+```
+
+En Linux o macOS reemplazá `.\.venv\Scripts\python.exe` por `.venv/bin/python`.
+Usá los puertos del `.env` y el usuario de Grafana allí configurado. Abrí el
+dashboard `bd3-machines-dashboard` en `http://localhost:3000`. Para el preset,
+elegí un rango absoluto UTC del 25/10/2026 de 00:00 a 01:00 y filtrá una máquina.
+
+Si PostgreSQL confirmó la carga y MongoDB falló, corregí la conexión y retomá
+desde el directorio impreso con `python -m scripts.run_demo --load-only <directorio-del-lote>`.
+El comando repite los upserts con los mismos artefactos. Las métricas y las
+alertas conservan sus claves, y una ventana antigua no reemplaza el riesgo de
+una ventana posterior. Para repetir la demostración, podés volver a ejecutar
+`--load` con los mismos parámetros y comparar los conteos en ambas bases.
+
+En un volumen PostgreSQL existente, ejecutá la migración antes de usar el
+cargador actualizado. El comando siguiente usa el usuario y la base de ejemplo:
+
+```powershell
+docker compose --env-file .env -f infra/docker-compose.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U admin_bd3 -d mantenimiento_predictivo -f /docker-entrypoint-initdb.d/002_pipeline_integration.sql
+```
+
+Para la demo usá una base sin los CSV de ejemplo. Esos CSV siguen disponibles
+con `python -m src.storage.load_results` en una base de fixtures. Una métrica de
+fixture carece de propietario y su riesgo carece de ventana de origen. La carga
+integrada rechaza estas colisiones y conserva los datos existentes.
+
+### Verificación y defensa
+
+Para probar la exportación local, ejecutá `python -m pytest tests/test_pipeline.py`.
+Con Compose activo y el entorno configurado, habilitá la prueba con
+`$env:BD3_INTEGRATION = '1'` en PowerShell y ejecutá
+`python -m pytest tests/test_pipeline_integration.py`. La prueba consulta ambos
+motores y ejecuta las consultas de los paneles mediante la API de Grafana.
+
+En la defensa, Leo puede mostrar un evento del JSONL y su partición histórica.
+Anto sigue la máquina en los conteos y Parquet de Spark. Gastón compara el
+semáforo y las series del dashboard con PostgreSQL y recupera las alertas en
+MongoDB. Para demostrar un ROJO histórico con último estado VERDE, ejecutá el
+comando con `--input tests/fixtures/pipeline_sample.jsonl --load` y filtrá `PR4-A`
+el 25/10/2026 de 12:00 a 12:15 UTC. Consultas de control:
+
+```sql
+SELECT machine_id, window_start, risk_level, calculated_at
+FROM machine_risk_latest WHERE machine_id = 'PR4-A';
+SELECT window_start, n_readings, max_vibration
+FROM sensor_metrics_5m WHERE machine_id = 'PR4-A' ORDER BY window_start;
+```
+
+```javascript
+db.getSiblingDB('mantenimiento_predictivo').alerts.find({machine_id: 'PR4-A'}).sort({timestamp: 1})
+```
 
 ## Ejecutar el análisis completo (PR #3)
 

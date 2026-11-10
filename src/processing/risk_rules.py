@@ -55,19 +55,8 @@ def execution_time(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
-def classify_risk(metrics: DataFrame, calculated_at: datetime,
-                  thresholds: RiskThresholds = RiskThresholds()) -> DataFrame:
-    """Clasificar máximos de la última ventana disponible de cada máquina.
-
-    Entrada: sensor_metrics_5m(QualityResult.valid), una fila por clave de ventana.
-    Los motivos incluyen el nivel más alto activado por cada sensor.
-    """
-    instant = execution_time(calculated_at)
-    latest = metrics.withColumn(
-        "_position", F.row_number().over(
-            Window.partitionBy("machine_id").orderBy(F.col("window_start").desc())
-        ),
-    ).filter(F.col("_position") == 1)
+def classify_windows(metrics: DataFrame, thresholds: RiskThresholds = RiskThresholds()) -> DataFrame:
+    """Clasificar cada ventana a partir de sus máximos y conservar los motivos."""
     levels, reasons = [], []
     for column, label, unit, rule in (
         ("max_temp", "Temperatura", "°C", thresholds.temperature),
@@ -83,11 +72,26 @@ def classify_risk(metrics: DataFrame, calculated_at: datetime,
              .otherwise(F.lit(f"AMARILLO (>= {rule.yellow} {unit})")),
         )))
     severity = F.greatest(*levels)
-    return latest.select(
+    return metrics.select(
         "machine_id", "window_start", "window_end",
-        F.lit(instant).cast("timestamp").alias("calculated_at"),
         F.when(severity == 2, "ROJO").when(severity == 1, "AMARILLO")
          .otherwise("VERDE").alias("risk_level"),
         F.when(severity == 0, F.lit("Sin umbrales altos activados; presión baja no evaluada."))
          .otherwise(F.concat_ws("; ", *reasons)).alias("risk_reason"),
+    )
+
+
+def classify_risk(metrics: DataFrame, calculated_at: datetime,
+                  thresholds: RiskThresholds = RiskThresholds()) -> DataFrame:
+    """Clasificar máximos de la última ventana disponible de cada máquina."""
+    instant = execution_time(calculated_at)
+    latest = metrics.withColumn(
+        "_position", F.row_number().over(
+            Window.partitionBy("machine_id").orderBy(F.col("window_start").desc())
+        ),
+    ).filter(F.col("_position") == 1)
+    return classify_windows(latest, thresholds).select(
+        "machine_id", "window_start", "window_end",
+        F.lit(instant).cast("timestamp").alias("calculated_at"),
+        "risk_level", "risk_reason",
     )

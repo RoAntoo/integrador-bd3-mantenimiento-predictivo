@@ -6,11 +6,11 @@ datasources:
     uid: pg_bd3_uid
     access: proxy
     url: postgres:5432
-    user: admin_bd3
+    user: $POSTGRES_USER
     secureJsonData:
-      password: admin_bd3_pass
+      password: $POSTGRES_PASSWORD
     jsonData:
-      database: mantenimiento_predictivo
+      database: $POSTGRES_DB
       sslmode: "disable"
       postgresVersion: 1600
     isDefault: true
