@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pyspark.sql import Column, DataFrame, SparkSession, Window
 from pyspark.sql import functions as F
-from pyspark.sql.types import StringType, StructField, StructType
+from pyspark.sql.types import LongType, StringType, StructField, StructType
 
 from src.processing.schema import TELEMETRY_SCHEMA
 from src.processing.spark import create_spark_session
@@ -103,18 +103,24 @@ class QualityResult:
     metrics: QualityMetrics
 
 
-def _parse_lines(spark: SparkSession, input_path: Path) -> DataFrame:
+def _parse_lines(spark: SparkSession, input_path: Path, normalized_input: bool = False) -> DataFrame:
     """Leer una fila por línea y conservar el texto aun si falla el parseo."""
     options = {
         **JSON_OPTIONS,
         "mode": "PERMISSIVE",
         "columnNameOfCorruptRecord": CORRUPT_RECORD_FIELD,
     }
-    return (
+    schema = QUALITY_SCHEMA
+    if normalized_input:
+        schema = StructType([*QUALITY_SCHEMA.fields,
+                             StructField("source_raw_line", StringType(), True),
+                             StructField("source_line_number", LongType(), True)])
+    parsed = (
         spark.read.text(input_path.as_uri())
         .select(F.col("value").alias("raw_line"))
-        .withColumn("_complete_object", _is_complete_json_object(F.col("raw_line")))
-        .withColumn("_parsed", F.from_json("raw_line", QUALITY_SCHEMA, options))
+        .withColumn("_complete_object", F.lit(True) if normalized_input
+                    else _is_complete_json_object(F.col("raw_line")))
+        .withColumn("_parsed", F.from_json("raw_line", schema, options))
         .withColumn(
             "_parse_error",
             ~F.col("_complete_object")
@@ -123,6 +129,12 @@ def _parse_lines(spark: SparkSession, input_path: Path) -> DataFrame:
         )
         .select("raw_line", "_parse_error", "_parsed.*")
     )
+
+    if normalized_input:
+        parsed = (parsed.withColumn("raw_line", F.col("source_raw_line"))
+                  .withColumnRenamed("source_line_number", "line_number")
+                  .drop("source_raw_line"))
+    return parsed
 
 
 def _classify_content(parsed: DataFrame) -> DataFrame:
@@ -186,9 +198,9 @@ def _classify_duplicates(candidates: DataFrame) -> DataFrame:
     )
 
 
-def clean_telemetry(spark: SparkSession, input_path: str | Path) -> QualityResult:
+def clean_telemetry(spark: SparkSession, input_path: str | Path, *, normalized_input: bool = False) -> QualityResult:
     """Separar lecturas válidas y rechazadas, y contar un lote JSONL local."""
-    parsed = _parse_lines(spark, resolve_input_path(input_path))
+    parsed = _parse_lines(spark, resolve_input_path(input_path), normalized_input)
     classified_content = _classify_content(parsed)
     invalid = classified_content.filter(F.size("rejection_reasons") > 0)
     candidates = classified_content.filter(F.size("rejection_reasons") == 0)
@@ -213,7 +225,7 @@ def clean_telemetry(spark: SparkSession, input_path: str | Path) -> QualityResul
     return QualityResult(
         valid=classified.filter(~is_rejected).select(*REQUIRED_FIELDS),
         rejected=classified.filter(is_rejected).select(
-            "raw_line", *REQUIRED_FIELDS, "rejection_reasons"
+            "raw_line", *(["line_number"] if normalized_input else []), *REQUIRED_FIELDS, "rejection_reasons"
         ),
         metrics=metrics,
     )

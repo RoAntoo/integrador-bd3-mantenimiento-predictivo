@@ -2,13 +2,44 @@
 
 ## Intercambio del pipeline (PR #4)
 
-El pipeline procesa el JSONL de Leo con los nombres cortos y las fechas con
-zona que requiere Spark. La ingesta conserva el original y genera raw e
-histórico por lote. Spark consume las líneas raw aceptadas por Leo, que aún
-incluyen duplicados. El manifiesto separa los descartes de ingesta de los
-rechazos de calidad. El Parquet curado contiene los cinco campos de calidad y
-`data_quality_flag = VALID`. El Parquet de rechazos conserva las líneas raw y sus
-motivos. Los campos adicionales del generador siguen en el histórico de Leo.
+El pipeline acepta `temperature`/`temperature_c`, `vibration`/`vibration_mm_s`
+y `pressure`/`pressure_bar`. La ingesta centraliza la validación y normalización.
+Cada variante presente debe ser un número finito, excluyendo booleanos, cadenas
+y nulos. Si aparecen ambas, deben ser numéricamente iguales (`60` equivale a
+`60.0`), sin tolerancia ni preferencia por una variante. Un conflicto rechaza la
+línea con `CONFLICTING_MEASUREMENT`.
+
+La ingesta entrega un JSONL normalizado con nombres cortos, timestamp UTC con
+milisegundos, `source_raw_line` y `source_line_number` (base 1). Conserva todas
+las lecturas aceptadas, incluidos duplicados. El texto original excluye solamente
+el separador de línea. Spark consume este archivo mediante `normalized_input=True`.
+El lector estricto y el análisis directo mantienen su contrato histórico de cinco
+campos cortos. Para admitir ambas variantes se utiliza el pipeline integrado.
+
+El lote conserva `telemetry.jsonl` original y dos auditorías separadas.
+`results/ingestion_rejected.jsonl` contiene `line_number`, `reason` y `raw_line`.
+`results/rejected_telemetry.parquet` contiene `line_number`, `raw_line`, los cinco
+campos parseados y `rejection_reasons`. El rechazo de ingesta no vuelve a entrar
+a Spark. Los duplicados ya están incluidos en los rechazos de Spark.
+
+`batch.json.balance` verifica la igualdad entre `received` y la suma de
+`ingestion_rejected`, `spark_rejected` y `valid`. También exige que los aceptados
+de ingesta coincidan con los recibidos por Spark. Un lote vacío o totalmente
+rechazado en modo permisivo publica auditoría y resultados vacíos. El modo
+estricto de la ingesta escribe su auditoría y luego falla ante rechazos.
+
+El Parquet curado contiene los cinco campos de calidad y `data_quality_flag`.
+El histórico de ingesta conserva campos adicionales y resuelve claves duplicadas
+reteniendo la última lectura procesada. Spark conserva una copia de duplicados
+idénticos y rechaza todas las lecturas de una clave con mediciones contradictorias.
+Por eso el histórico y el curado pueden tener distintos conteos y valores. El
+curado es la fuente de métricas y riesgo.
+
+La identidad del lote incluye entrada, umbrales y `pipeline_version=5`. Esto evita
+reutilizar resultados anteriores a la normalización. `--load-only` sigue aceptando
+los manifiestos anteriores. Regenerar una entrada antigua crea otro identificador.
+Si sus ventanas ya están publicadas, PostgreSQL rechaza la nueva carga y conserva
+los datos existentes. Para comparar versiones, usar una base de pruebas separada.
 
 | Archivo | Contrato |
 | --- | --- |
@@ -23,7 +54,7 @@ local materializa un DataFrame por vez en memoria para escribir Parquet con
 PyArrow. Está pensado para los lotes de la demo.
 
 Cada clave `(machine_id, window_start)` publicable pertenece a un solo lote,
-identificado por el SHA-256 de la entrada y la configuración de umbrales. Se
+identificado por el SHA-256 de entrada, configuración de umbrales y versión del pipeline. Se
 aceptan ventanas con pocas lecturas como cerradas. Si otro lote aporta datos a
 la misma clave, PostgreSQL revierte toda su carga. La combinación de ventanas
 parciales y las correcciones de ventanas publicadas quedan fuera del MVP.

@@ -18,6 +18,7 @@ from src.processing.spark import create_spark_session
 
 
 MANIFEST = "batch.json"
+PIPELINE_VERSION = 5
 
 
 def prepare_batch(work_dir: Path, input_path: Path | None, start_time: str, seed: int,
@@ -38,7 +39,8 @@ def prepare_batch(work_dir: Path, input_path: Path | None, start_time: str, seed
         with source.open("rb") as stream:
             source_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
         # La identidad vincula la entrada y las reglas, no el reloj de ejecución.
-        identity = {"source_sha256": source_sha256, "thresholds": asdict(thresholds)}
+        identity = {"source_sha256": source_sha256, "thresholds": asdict(thresholds),
+                    "pipeline_version": PIPELINE_VERSION}
         batch_id = hashlib.sha256(json.dumps(identity, sort_keys=True).encode("utf-8")).hexdigest()
         batch_dir = work_dir / batch_id
         if (batch_dir / MANIFEST).is_file():
@@ -46,22 +48,28 @@ def prepare_batch(work_dir: Path, input_path: Path | None, start_time: str, seed
 
         calculated_at = datetime.now(timezone.utc)
         ingestion = ingest_telemetry_batch(source, stage / "lake")
-        with TemporaryDirectory(dir=stage) as raw_dir:
-            raw_input = Path(raw_dir) / "raw.jsonl"
-            with raw_input.open("wb") as target:
-                for raw_file in ingestion.raw_files:
-                    with raw_file.open("rb") as raw:
-                        shutil.copyfileobj(raw, target)
-
-            spark = create_spark_session()
-            try:
-                result = analyze_telemetry(spark, raw_input, calculated_at, thresholds)
-                export_results(result, thresholds, stage / "results")
-            finally:
-                spark.stop()
+        spark = create_spark_session()
+        try:
+            result = analyze_telemetry(spark, ingestion.normalized_path, calculated_at, thresholds,
+                                       normalized_input=True)
+            export_results(result, thresholds, stage / "results")
+        finally:
+            spark.stop()
+        shutil.copyfile(ingestion.rejected_path, stage / "results" / "ingestion_rejected.jsonl")
+        balance = {
+            "received": ingestion.total_received,
+            "ingestion_rejected": ingestion.invalid_records,
+            "spark_rejected": result.quality.metrics.rejected,
+            "valid": result.quality.metrics.valid,
+        }
+        if (ingestion.valid_records != result.quality.metrics.received
+                or balance["received"] != sum(balance[key] for key in
+                                               ("ingestion_rejected", "spark_rejected", "valid"))):
+            raise ValueError("Los conteos de ingesta y Spark no concilian.")
 
         manifest = {
             **identity,
+            "balance": balance,
             "batch_id": batch_id,
             "calculated_at": calculated_at.isoformat(),
             "ingestion": {

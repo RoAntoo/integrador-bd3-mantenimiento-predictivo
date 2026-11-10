@@ -62,3 +62,15 @@ original de cada campo ni la existencia de la máquina en un catálogo.
 Se cumple `received = valid + rejected`. En un conflicto de dos lecturas, las
 dos cuentan como rechazadas y duplicadas. La deduplicación es **dentro del
 archivo procesado**; no hay estado ni comparación entre lotes.
+
+## Integración con la ingesta
+
+El pipeline del PR #5 llama a `clean_telemetry` con `normalized_input=True` sobre
+el JSONL generado por la ingesta. Ese modo lee las mediciones ya normalizadas y
+recupera el contenido original desde `source_raw_line` y el número de línea desde
+`source_line_number`. El esquema de los rechazos incorpora `line_number`.
+Los llamadores anteriores conservan su contrato y sus cinco campos cortos.
+
+La auditoría de ingesta está separada de la auditoría Spark. Las líneas rechazadas
+por ingesta no se reciben en Spark. El manifiesto global cuenta los duplicados
+como parte de los rechazos de Spark, sin sumarlos nuevamente.

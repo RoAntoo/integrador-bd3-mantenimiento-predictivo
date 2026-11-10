@@ -80,11 +80,11 @@ devuelve los DataFrames para su futura escritura a Parquet. El cargador de Gast�
 recibe rutas CSV/Parquet, no DataFrames Spark directamente.
 
 Los lotes son independientes. No se combinan ventanas parciales entre archivos,
-no se deduplica entre lotes y no se conserva estado global. En el PR #4 habrá que
-resolver la recomposición de ventanas y evitar que una carga antigua sobrescriba
-un riesgo más reciente. También habrá que acordar persistir los estadísticos
-adicionales y los límites de ventana. El histórico de Leo usa otra resolución de
-duplicados; este análisis recibe JSONL original a través del PR #2.
+no se deduplica entre lotes y el análisis no conserva estado global. La carga
+integrada rechaza ventanas de otro lote y evita que una ventana antigua reemplace
+un riesgo más reciente. La recomposición de ventanas parciales sigue pendiente.
+El histórico de ingesta usa otra resolución de duplicados. Desde el PR #5, el
+pipeline entrega a Spark el JSONL normalizado con referencia a cada línea original.
 
 ## Ejecución local
 
