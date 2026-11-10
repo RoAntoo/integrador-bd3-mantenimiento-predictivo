@@ -1,5 +1,36 @@
 # Contrato del módulo de procesamiento
 
+## Intercambio del pipeline (PR #4)
+
+El pipeline procesa el JSONL de Leo con los nombres cortos y las fechas con
+zona que requiere Spark. La ingesta conserva el original y genera raw e
+histórico por lote. Spark consume las líneas raw aceptadas por Leo, que aún
+incluyen duplicados. El manifiesto separa los descartes de ingesta de los
+rechazos de calidad. El Parquet curado contiene los cinco campos de calidad y
+`data_quality_flag = VALID`. El Parquet de rechazos conserva las líneas raw y sus
+motivos. Los campos adicionales del generador siguen en el histórico de Leo.
+
+| Archivo | Contrato |
+| --- | --- |
+| `sensor_metrics_5m.parquet` | `machine_id`, `window_start`, `avg_temp`, `max_vibration`, `avg_pressure`, `n_readings`. SQL almacena las mediciones con dos decimales y el conteo como `INTEGER`. |
+| `machine_risk_latest.parquet` | `machine_id`, `window_start`, `calculated_at`, `risk_level`, `risk_reason`. El estado más reciente se decide por `window_start`, con `calculated_at` como fecha de auditoría. |
+| `alerts.jsonl` | UTF-8, un objeto por ventana AMARILLA o ROJA con `machine_id`, `timestamp`, `level`, `description`. `timestamp` es el inicio UTC en `YYYY-MM-DDTHH:MM:SSZ`. MongoDB conserva esa clave como texto para mantener compatibilidad con sus fixtures. |
+| `machine_statistics.parquet` | Estadísticas completas del lote por máquina. Archivo local de auditoría. |
+
+Los timestamps Parquet tienen zona UTC. El riesgo usa los máximos originales
+de Spark y los mismos umbrales en el semáforo y en el histórico. El exportador
+local materializa un DataFrame por vez en memoria para escribir Parquet con
+PyArrow. Está pensado para los lotes de la demo.
+
+Cada clave `(machine_id, window_start)` publicable pertenece a un solo lote,
+identificado por el SHA-256 de la entrada y la configuración de umbrales. Se
+aceptan ventanas con pocas lecturas como cerradas. Si otro lote aporta datos a
+la misma clave, PostgreSQL revierte toda su carga. La combinación de ventanas
+parciales y las correcciones de ventanas publicadas quedan fuera del MVP.
+Conservá `batch.json` y sus resultados juntos para el reintento. PostgreSQL y
+MongoDB confirman por separado. Si falla MongoDB, `--load-only` vuelve a cargar
+el mismo conjunto de archivos.
+
 ## Integración confirmada en el PR #3
 
 El generador de Leo ya entrega JSONL con los cinco campos de procesamiento

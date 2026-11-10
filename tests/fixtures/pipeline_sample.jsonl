@@ -1,0 +1,8 @@
+{"machine_id":"PR4-A","timestamp":"2026-10-25T12:00:00Z","temperature":90,"vibration":2,"pressure":5}
+{"machine_id":"PR4-A","timestamp":"2026-10-25T09:00:00-03:00","temperature":90,"vibration":2,"pressure":5}
+{"machine_id":"PR4-A","timestamp":"2026-10-25T12:05:00Z","temperature":70,"vibration":7,"pressure":5}
+{"machine_id":"PR4-A","timestamp":"2026-10-25T12:10:00Z","temperature":60,"vibration":2,"pressure":5}
+{"machine_id":"PR4-B","timestamp":"2026-10-25T12:10:00Z","temperature":60,"vibration":2,"pressure":5}
+{"machine_id":"PR4-A","timestamp":"2026-10-25T12:11:00Z","temperature":60,"vibration":2,"pressure":5}
+{"machine_id":"PR4-A","timestamp":"2026-10-25T12:11:00Z","temperature":95,"vibration":2,"pressure":5}
+{"machine_id":"PR4-A","timestamp":"fecha-invalida","temperature":95,"vibration":2,"pressure":5}
