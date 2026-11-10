@@ -22,6 +22,7 @@ MANIFEST = "batch.json"
 
 def prepare_batch(work_dir: Path, input_path: Path | None, start_time: str, seed: int,
                   thresholds: RiskThresholds) -> Path:
+    """Preparar los artefactos del lote o reutilizar una exportación idéntica."""
     work_dir = work_dir.resolve()
     work_dir.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(dir=work_dir) as temp:
@@ -83,13 +84,21 @@ def prepare_batch(work_dir: Path, input_path: Path | None, start_time: str, seed
 
 
 def load_batch(batch_dir: Path, batch_id: str) -> None:
+    """Cargar un lote exportado en PostgreSQL antes de publicar sus alertas."""
+    from psycopg2 import Error as PostgreSQLError
+
     from src.storage.load_results import upsert_mongodb, upsert_postgres
 
     results = batch_dir / "results"
     alerts = results / ALERTS_FILE
     if not alerts.is_file():
         raise FileNotFoundError(f"Falta el archivo de alertas del lote: {alerts}")
-    upsert_postgres(results / METRICS_FILE, results / RISK_FILE, batch_id=batch_id)
+    try:
+        upsert_postgres(results / METRICS_FILE, results / RISK_FILE, batch_id=batch_id)
+    except PostgreSQLError as error:
+        raise RuntimeError(
+            f'Falló la carga en PostgreSQL. Corregí el error y reintentá con --load-only "{batch_dir}".'
+        ) from error
     try:
         upsert_mongodb(alerts)
     except Exception as error:
@@ -99,6 +108,7 @@ def load_batch(batch_dir: Path, batch_id: str) -> None:
 
 
 def main() -> int:
+    """Interpretar las opciones de la CLI y mostrar el resultado de la corrida."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, help="JSONL de Leo. Por defecto genera una hora para tres máquinas.")
     parser.add_argument("--start-time", default=DEFAULT_START_TIME, help="Inicio ISO 8601 con zona explícita.")

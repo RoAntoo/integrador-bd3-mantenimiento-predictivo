@@ -13,6 +13,7 @@ load_dotenv()
 
 
 def required_env(name: str) -> str:
+    """Leer una variable obligatoria del entorno."""
     value = os.getenv(name)
     if not value:
         raise ValueError(f"Falta configurar {name} en el entorno o en .env.")
@@ -20,6 +21,7 @@ def required_env(name: str) -> str:
 
 
 def get_pg_connection():
+    """Abrir una conexión a PostgreSQL con la configuración local."""
     return psycopg2.connect(
         host=os.getenv("POSTGRES_HOST", "localhost"),
         port=os.getenv("POSTGRES_PORT", "5432"),
@@ -31,6 +33,7 @@ def get_pg_connection():
 
 
 def get_mongo_client():
+    """Crear un cliente autenticado de MongoDB con la configuración local."""
     return MongoClient(
         host=os.getenv("MONGO_HOST", "localhost"),
         port=int(os.getenv("MONGO_PORT", "27017")),
@@ -49,6 +52,7 @@ def load_dataframe(file_path: Path) -> pd.DataFrame:
 
 
 def utc_datetime(value):
+    """Normalizar un timestamp de consumo a un datetime UTC para PostgreSQL."""
     timestamp = pd.to_datetime(value, utc=True)
     if pd.isna(timestamp):
         raise ValueError("Los timestamps de consumo no pueden estar vacíos.")
@@ -154,6 +158,7 @@ def upsert_postgres(metrics_path: Path, risk_path: Path, *, batch_id: str | None
 
 
 def upsert_mongodb(alerts_path: Path):
+    """Cargar alertas JSONL con una clave única por máquina e instante."""
     client = get_mongo_client()
     try:
         db = client[os.getenv("MONGO_DB", "mantenimiento_predictivo")]

@@ -21,12 +21,14 @@ pytestmark = pytest.mark.skipif(os.getenv("BD3_INTEGRATION") != "1", reason="Req
 
 
 def fetch(query, params):
+    """Ejecutar una consulta de verificación y devolver sus filas."""
     with closing(get_pg_connection()) as connection, connection.cursor() as cursor:
         cursor.execute(query, params)
         return cursor.fetchall()
 
 
 def grafana_panels(machine_id):
+    """Consultar los paneles de Grafana para la máquina indicada."""
     port = os.getenv("GRAFANA_PORT", "3000")
     base_url = os.getenv("GRAFANA_URL", f"http://localhost:{port}")
     user = os.getenv("GRAFANA_USER", "admin")
@@ -47,6 +49,7 @@ def grafana_panels(machine_id):
 
 
 def test_real_pipeline_persistence_retry_and_dashboard(tmp_path, monkeypatch):
+    """Verificar la carga, sus reintentos, el rollback y los paneles reales."""
     suffix = uuid4().hex[:12]
     machine, other = f"PR4-A-{suffix}", f"PR4-B-{suffix}"
     new_machine = f"PR4-0-{suffix}"
@@ -98,10 +101,14 @@ def test_real_pipeline_persistence_retry_and_dashboard(tmp_path, monkeypatch):
             )
             risks.iloc[:0].to_parquet(overlap / RISK_FILE, index=False)
             (overlap / ALERTS_FILE).write_text("", encoding="utf-8")
+            metric_query = "SELECT avg_temp FROM sensor_metrics_5m WHERE machine_id = %s AND window_start = %s"
+            metric_key = (machine, metric_row["window_start"].iloc[0].to_pydatetime())
+            [(original_avg_temp,)] = fetch(metric_query, metric_key)
             with pytest.raises(ValueError, match="Ventana de otro lote"):
                 load_batch(overlap.parent, "overlap-" + suffix)
             assert fetch("SELECT machine_id FROM machines WHERE machine_id = %s", (new_machine,)) == []
             assert fetch(pg_count, (machine,)) == [(4,)]
+            assert fetch(metric_query, metric_key) == [(original_avg_temp,)]
 
             panels = grafana_panels(machine)
             assert set(panels) == {"1", "2", "3"}

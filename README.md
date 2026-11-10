@@ -40,6 +40,12 @@ y de calidad. El directorio contiene el JSONL original, `lake/` con el raw y el
 Parquet histórico de Leo, y `results/` con Parquet curado, rechazos, estadísticas,
 métricas, riesgo y alertas JSONL.
 
+Si el preset ya está cargado, cambiar la semilla (`--seed`) o los umbrales
+(`--thresholds`) genera otro identificador de lote. PostgreSQL rechaza la carga
+si alguna ventana ya pertenece al lote original. Para probar la variante, usá
+`--start-time` con un horario que no se solape o bases separadas de PostgreSQL
+y MongoDB.
+
 Para cargar y visualizar, iniciá Docker Desktop, copiá `.env.example` a `.env`
 y completá `POSTGRES_PASSWORD`, `MONGO_INITDB_ROOT_PASSWORD` y `GRAFANA_PASSWORD`
 con contraseñas locales. Ejecutá:
@@ -55,7 +61,18 @@ dashboard `bd3-machines-dashboard` en `http://localhost:3000`. Para el preset,
 elegí un rango absoluto UTC del 25/10/2026 de 00:00 a 01:00 y filtrá una máquina.
 
 Si PostgreSQL confirmó la carga y MongoDB falló, corregí la conexión y retomá
-desde el directorio impreso con `python -m scripts.run_demo --load-only <directorio-del-lote>`.
+desde el directorio impreso. En Windows:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.run_demo --load-only "<directorio-del-lote>"
+```
+
+En Linux o macOS:
+
+```sh
+.venv/bin/python -m scripts.run_demo --load-only "<directorio-del-lote>"
+```
+
 El comando repite los upserts con los mismos artefactos. Las métricas y las
 alertas conservan sus claves, y una ventana antigua no reemplaza el riesgo de
 una ventana posterior. Para repetir la demostración, podés volver a ejecutar
@@ -68,18 +85,32 @@ cargador actualizado. El comando siguiente usa el usuario y la base de ejemplo:
 docker compose --env-file .env -f infra/docker-compose.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U admin_bd3 -d mantenimiento_predictivo -f /docker-entrypoint-initdb.d/002_pipeline_integration.sql
 ```
 
-Para la demo usá una base sin los CSV de ejemplo. Esos CSV siguen disponibles
-con `python -m src.storage.load_results` en una base de fixtures. Una métrica de
-fixture carece de propietario y su riesgo carece de ventana de origen. La carga
-integrada rechaza estas colisiones y conserva los datos existentes.
+Para la demo usá una base sin los CSV de ejemplo. Para cargarlos en una base de
+fixtures, ejecutá `.\.venv\Scripts\python.exe -m src.storage.load_results` en
+Windows o `.venv/bin/python -m src.storage.load_results` en Linux o macOS. Una
+métrica de fixture carece de propietario y su riesgo carece de ventana de origen.
+La carga integrada rechaza estas colisiones y conserva los datos existentes.
 
 ### Verificación y defensa
 
-Para probar la exportación local, ejecutá `python -m pytest tests/test_pipeline.py`.
-Con Compose activo y el entorno configurado, habilitá la prueba con
-`$env:BD3_INTEGRATION = '1'` en PowerShell y ejecutá
-`python -m pytest tests/test_pipeline_integration.py`. La prueba consulta ambos
-motores y ejecuta las consultas de los paneles mediante la API de Grafana.
+Podés probar la exportación local sin Compose. Para la prueba de integración,
+levantá Compose y configurá el entorno. En Windows:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/test_pipeline.py
+$env:BD3_INTEGRATION = '1'
+.\.venv\Scripts\python.exe -m pytest tests/test_pipeline_integration.py
+```
+
+En Linux o macOS:
+
+```sh
+.venv/bin/python -m pytest tests/test_pipeline.py
+BD3_INTEGRATION=1 .venv/bin/python -m pytest tests/test_pipeline_integration.py
+```
+
+La prueba de integración consulta ambos motores y ejecuta las consultas de los
+paneles mediante la API de Grafana.
 
 En la defensa, Leo puede mostrar un evento del JSONL y su partición histórica.
 Anto sigue la máquina en los conteos y Parquet de Spark. Gastón compara el
@@ -210,8 +241,9 @@ Las pruebas nuevas `test_statistics.py`, `test_risk_rules.py` y `test_analysis.p
 cubren estadísticas, fronteras inclusivas, prioridades, ventanas, última ventana,
 configuración y entradas vacías/rechazadas. Para ejecutar solo una suite, sustituir
 `test_*.py` por su nombre. El test de almacenamiento de Gastón es una función de
-pytest y **no se ejecuta con unittest**: requiere sus dependencias y las bases
-activas (`python -m pytest tests/test_storage.py -v`).
+pytest y **no se ejecuta con unittest**. Con sus dependencias y las bases activas,
+ejecutá `.\.venv\Scripts\python.exe -m pytest tests/test_storage.py -v` en Windows
+o `.venv/bin/python -m pytest tests/test_storage.py -v` en Linux o macOS.
 
 ## Organización
 

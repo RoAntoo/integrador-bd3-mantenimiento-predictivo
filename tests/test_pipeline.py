@@ -8,6 +8,7 @@ from src.storage.load_results import load_dataframe
 
 
 def test_export_preserves_quality_utc_and_historical_alerts(tmp_path):
+    """Verificar los contratos de exportación y las alertas de ventanas anteriores."""
     source = Path(__file__).parent / "fixtures" / "pipeline_sample.jsonl"
     arguments = (tmp_path, source, "2026-10-25T00:00:00Z", 42, RiskThresholds())
     batch = prepare_batch(*arguments)
@@ -37,6 +38,7 @@ def test_export_preserves_quality_utc_and_historical_alerts(tmp_path):
 
 
 def test_green_batch_exports_an_empty_alert_file(tmp_path):
+    """Verificar que un lote VERDE tenga un JSONL de alertas vacío."""
     source = tmp_path / "green.jsonl"
     source.write_text(json.dumps({
         "machine_id": "PR4-GREEN", "timestamp": "2026-10-25T12:00:00Z",
