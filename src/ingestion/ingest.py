@@ -9,6 +9,7 @@ import json
 import math
 import os
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import threading
 from typing import Any, Iterator
 
@@ -42,6 +43,8 @@ class IngestionResult:
     machines: list[str] = field(default_factory=list)
     raw_files: list[Path] = field(default_factory=list)
     parquet_files: list[Path] = field(default_factory=list)
+    normalized_path: Path | None = None
+    rejected_path: Path | None = None
     manifest_path: Path | None = None
     idempotent_replay: bool = False
     azure_uploaded_blobs: list[str] = field(default_factory=list)
@@ -78,13 +81,25 @@ def _format_utc_millis(timestamp_dt: datetime) -> str:
 
 def _extract_finite_float(record: dict[str, Any], primary: str, fallback: str) -> float:
     """Extraer una medición numérica finita aceptando nombre corto o Contrato A."""
-    raw_val = record.get(primary, record.get(fallback))
-    if raw_val is None or isinstance(raw_val, bool) or not isinstance(raw_val, (int, float)):
-        raise ValueError(f"Campo numérico obligatorio ausente o inválido: {primary}/{fallback}")
-    value = float(raw_val)
-    if not math.isfinite(value):
-        raise ValueError(f"Valor no finito en {primary}: {value}")
-    return value
+    present = [name for name in (primary, fallback) if name in record]
+    if not present:
+        raise ValueError(f"MISSING_MEASUREMENT: {primary}/{fallback}")
+    converted = {}
+    for name in present:
+        value = record[name]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"INVALID_MEASUREMENT: {name}")
+        try:
+            value = float(value)
+        except OverflowError as error:
+            raise ValueError(f"NON_FINITE_MEASUREMENT: {name}") from error
+        if not math.isfinite(value):
+            raise ValueError(f"NON_FINITE_MEASUREMENT: {name}")
+        converted[name] = value
+    if len(present) == 2 and record[primary] != record[fallback]:
+        raise ValueError(f"CONFLICTING_MEASUREMENT: {primary}/{fallback}")
+    return converted[present[0]]
+
 
 
 def validate_and_normalize_record(raw_line: str) -> tuple[dict[str, Any], str]:
@@ -355,7 +370,7 @@ def ingest_telemetry_batch(
     """Validar un archivo JSONL entrante, copiar líneas válidas a zona raw y escribir Parquet.
 
     En modo permisivo (`strict=False`), las líneas inválidas se contabilizan en `invalid_records`
-    y se omiten del Data Lake (permanecen únicamente en el archivo de entrada original).
+    y se conservan con su línea original y motivo en un JSONL de rechazos.
     """
     source = Path(input_path).resolve()
     if not source.is_file():
@@ -374,18 +389,22 @@ def ingest_telemetry_batch(
     timestamps: list[str] = []
     valid_count = 0
     invalid_count = 0
+    normalized_lines = []
+    rejected_lines = []
 
     for line_number, raw_line in enumerate(raw_lines, start=1):
         try:
             normalized, part_date = validate_and_normalize_record(raw_line)
         except (ValueError, json.JSONDecodeError) as error:
             invalid_count += 1
-            if strict:
-                raise ValueError(
-                    f"Error de validación en línea {line_number} de {source.name}: {error}"
-                ) from error
+            rejected_lines.append(json.dumps({
+                "line_number": line_number, "reason": str(error), "raw_line": raw_line,
+            }, ensure_ascii=False))
             continue
 
+        normalized_lines.append(json.dumps({
+            **normalized, "source_line_number": line_number, "source_raw_line": raw_line,
+        }, ensure_ascii=False))
         valid_count += 1
         machines_set.add(normalized["machine_id"])
         timestamps.append(normalized["timestamp"])
@@ -395,12 +414,19 @@ def ingest_telemetry_batch(
         key = (normalized["machine_id"], normalized["timestamp"])
         by_date_records.setdefault(part_date, {})[key] = normalized
 
-    if total_received == 0 or valid_count == 0:
-        raise ValueError(
-            f"El archivo '{source.name}' no contiene registros válidos para ingestar."
-        )
-
     batch_tag = f"{source.stem}_{sha256[:10]}"
+    audit_dir = lake_dir / "audit"
+    audit_dir.mkdir(parents=True, exist_ok=True)
+    rejected_path = audit_dir / f"{batch_tag}_rejected.jsonl"
+    normalized_path = audit_dir / f"{batch_tag}_normalized.jsonl"
+    with TemporaryDirectory(dir=audit_dir) as temp:
+        for path, lines in ((rejected_path, rejected_lines), (normalized_path, normalized_lines)):
+            staged_path = Path(temp) / path.name
+            staged_path.write_text("".join(line + "\n" for line in lines), encoding="utf-8")
+            staged_path.replace(path)
+    if strict and invalid_count:
+        raise ValueError(f"{invalid_count} líneas inválidas. Auditoría en {rejected_path}")
+
     raw_files: list[Path] = []
     parquet_files: list[Path] = []
 
@@ -470,7 +496,7 @@ def ingest_telemetry_batch(
     if upload_azure:
         uploaded_blobs = upload_to_azure_blob(
             lake_root=lake_dir,
-            files_to_upload=[*raw_files, *parquet_files, manifest_path],
+            files_to_upload=[*raw_files, *parquet_files, manifest_path, normalized_path, rejected_path],
         )
 
     return IngestionResult(
@@ -487,6 +513,8 @@ def ingest_telemetry_batch(
         machines=sorted_machines,
         raw_files=raw_files,
         parquet_files=parquet_files,
+        normalized_path=normalized_path,
+        rejected_path=rejected_path,
         manifest_path=manifest_path,
         idempotent_replay=idempotent_replay,
         azure_uploaded_blobs=uploaded_blobs,
