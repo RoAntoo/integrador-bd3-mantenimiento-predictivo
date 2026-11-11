@@ -57,6 +57,24 @@ def test_all_rejected_and_strict_audit(tmp_path):
     assert len(list((tmp_path / "strict" / "audit").glob("*_rejected.jsonl"))) == 1
 
 
+@pytest.mark.parametrize("field", list(SHORT) + list(UNITS))
+@pytest.mark.parametrize("value", [10**400, -(10**400), float("inf")])
+def test_unrepresentable_measurement_keeps_valid_lines_and_audit(tmp_path, field, value):
+    """Auditar desbordamientos y valores no finitos sin interrumpir las lecturas válidas."""
+    valid = json.dumps(BASE | SHORT)
+    invalid = json.dumps(BASE | SHORT | {field: value})
+    source = tmp_path / "overflow.jsonl"
+    source.write_text(valid + "\n" + invalid + "\n" + valid + "\n", encoding="utf-8")
+    result = ingest_telemetry_batch(source, tmp_path / "lake")
+    assert (result.total_received, result.valid_records, result.invalid_records) == (3, 2, 1)
+    rejected = json.loads(result.rejected_path.read_text(encoding="utf-8"))
+    assert rejected == {"line_number": 2, "reason": f"NON_FINITE_MEASUREMENT: {field}",
+                        "raw_line": invalid}
+    normalized = [json.loads(line) for line in result.normalized_path.read_text(encoding="utf-8").splitlines()]
+    assert [row["source_line_number"] for row in normalized] == [1, 3]
+    assert all(row["source_raw_line"] == valid for row in normalized)
+
+
 def test_dashboard_time_filter_configuration():
     """Filtrar las tendencias por tiempo y conservar el último estado en el ranking."""
     dashboard = json.loads((Path(__file__).parents[1] / "dashboards" / "machines.json").read_text(encoding="utf-8"))

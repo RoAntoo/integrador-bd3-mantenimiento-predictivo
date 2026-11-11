@@ -96,3 +96,9 @@ def test_all_rejected_pipeline_publishes_audit(tmp_path):
     manifest = json.loads((batch / MANIFEST).read_text(encoding="utf-8"))
     assert manifest["balance"] == {"received": 1, "ingestion_rejected": 1, "spark_rejected": 0, "valid": 0}
     assert load_dataframe(batch / "results" / "clean_telemetry.parquet").empty
+    rejected_path = batch / "results" / "ingestion_rejected.jsonl"
+    assert rejected_path.is_file()
+    rejected = json.loads(rejected_path.read_text(encoding="utf-8"))
+    assert rejected["line_number"] == 1
+    assert rejected["reason"]
+    assert rejected["raw_line"] == "{broken"

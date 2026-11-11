@@ -84,15 +84,21 @@ def _extract_finite_float(record: dict[str, Any], primary: str, fallback: str) -
     present = [name for name in (primary, fallback) if name in record]
     if not present:
         raise ValueError(f"MISSING_MEASUREMENT: {primary}/{fallback}")
+    converted = {}
     for name in present:
         value = record[name]
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError(f"INVALID_MEASUREMENT: {name}")
+        try:
+            value = float(value)
+        except OverflowError as error:
+            raise ValueError(f"NON_FINITE_MEASUREMENT: {name}") from error
         if not math.isfinite(value):
             raise ValueError(f"NON_FINITE_MEASUREMENT: {name}")
+        converted[name] = value
     if len(present) == 2 and record[primary] != record[fallback]:
         raise ValueError(f"CONFLICTING_MEASUREMENT: {primary}/{fallback}")
-    return float(record[present[0]])
+    return converted[present[0]]
 
 
 
