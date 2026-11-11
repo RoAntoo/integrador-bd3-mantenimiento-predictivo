@@ -8,7 +8,6 @@ las tres contraseñas. Las siguientes instrucciones usan PowerShell.
 
 ```powershell
 docker compose --env-file .env -f infra/docker-compose.yml up -d --wait
-.\.venv\Scripts\python.exe -m scripts.run_demo --load
 ```
 
 En volúmenes PostgreSQL existentes, aplicar primero la migración con el usuario
@@ -18,12 +17,24 @@ y base configurados. Este ejemplo utiliza los valores predeterminados.
 docker compose --env-file .env -f infra/docker-compose.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U admin_bd3 -d mantenimiento_predictivo -f /docker-entrypoint-initdb.d/002_pipeline_integration.sql
 ```
 
+Cargar el preset después de aplicar la migración si corresponde. Si ya se cargó
+con una versión anterior del pipeline, esta versión genera otro `batch_id` y
+PostgreSQL rechaza la reutilización de las ventanas del lote anterior. Usar bases
+separadas o elegir un intervalo sin solapamiento con `--start-time`. Para
+reintentar el lote anterior, usar `--load-only "<directorio-del-lote>"`.
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.run_demo --load
+```
+
 La consola imprime el directorio publicado y el balance global. Abrir Grafana en
 el puerto configurado y seleccionar el tablero `bd3-machines-dashboard`.
-El preset corresponde al 25/10/2026, entre 00:00 y 01:00 UTC. Las tendencias
-filtran por máquina y rango temporal. El ranking conserva el último estado y
-muestra la fecha de cálculo y el inicio de su ventana de medición. Los registros
-antiguos cargados desde CSV pueden carecer de ventana y mostrar un valor vacío.
+Para el preset, seleccionar el rango absoluto UTC del 25/10/2026 de 00:00 a 01:00.
+El tablero abre por defecto en los últimos siete días. Fuera del rango del preset,
+las tendencias pueden aparecer vacías aunque la carga haya sido exitosa. Las
+tendencias filtran por máquina y rango temporal. El ranking conserva el último
+estado y muestra la fecha de cálculo y el inicio de su ventana de medición. Los
+registros antiguos cargados desde CSV pueden carecer de ventana y mostrar un valor vacío.
 
 ## Verificación de datos
 

@@ -65,7 +65,10 @@ def prepare_batch(work_dir: Path, input_path: Path | None, start_time: str, seed
         if (ingestion.valid_records != result.quality.metrics.received
                 or balance["received"] != sum(balance[key] for key in
                                                ("ingestion_rejected", "spark_rejected", "valid"))):
-            raise ValueError("Los conteos de ingesta y Spark no concilian.")
+            raise ValueError(
+                f"Los conteos de ingesta y Spark no concilian. Balance: {balance}. "
+                f"Aceptados en ingesta: {ingestion.valid_records}."
+            )
 
         manifest = {
             **identity,

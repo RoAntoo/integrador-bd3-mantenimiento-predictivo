@@ -131,7 +131,7 @@ def _parse_lines(spark: SparkSession, input_path: Path, normalized_input: bool =
     )
 
     if normalized_input:
-        parsed = (parsed.withColumn("raw_line", F.col("source_raw_line"))
+        parsed = (parsed.withColumn("raw_line", F.coalesce("source_raw_line", "raw_line"))
                   .withColumnRenamed("source_line_number", "line_number")
                   .drop("source_raw_line"))
     return parsed

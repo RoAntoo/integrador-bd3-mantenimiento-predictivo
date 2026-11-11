@@ -68,22 +68,28 @@ def test_green_batch_exports_an_empty_alert_file(tmp_path):
 
 
 def test_unit_names_and_conflicts_through_pipeline(tmp_path):
+    """Conservar una sola lectura con alias equivalentes y rechazar el conflicto."""
     BASE = {"machine_id": "PR5-A", "timestamp": "2026-10-25T12:00:00Z"}
     SHORT = {"temperature": 60, "vibration": 2, "pressure": 5}
     UNITS = {"temperature_c": 60, "vibration_mm_s": 2, "pressure_bar": 5}
 
     source = tmp_path / "aliases.jsonl"
     rows = [BASE | UNITS, BASE | SHORT, BASE | SHORT | {"temperature_c": 99}]
-    source.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    raw_lines = [json.dumps(row) for row in rows]
+    source.write_text("\n".join(raw_lines) + "\n", encoding="utf-8")
     batch = prepare_batch(tmp_path / "batches", source, "2026-10-25T00:00:00Z", 42, RiskThresholds())
     manifest = json.loads((batch / MANIFEST).read_text(encoding="utf-8"))
     assert manifest["balance"] == {"received": 3, "ingestion_rejected": 1, "spark_rejected": 1, "valid": 1}
     rejected = load_dataframe(batch / "results" / "rejected_telemetry.parquet")
-    assert json.loads(rejected.iloc[0].raw_line) in rows[:2]
-    assert rejected.iloc[0].line_number in (1, 2)
+    retained = min(raw_lines[:2])
+    expected_line_number = 2 if retained == raw_lines[0] else 1
+    assert len(rejected) == 1
+    assert rejected.iloc[0].raw_line == raw_lines[expected_line_number - 1]
+    assert rejected.iloc[0].line_number == expected_line_number
 
 
 def test_all_rejected_pipeline_publishes_audit(tmp_path):
+    """Publicar el rechazo de ingesta aunque el lote no tenga lecturas válidas."""
     source = tmp_path / "invalid.jsonl"
     source.write_text("{broken\n", encoding="utf-8")
     batch = prepare_batch(tmp_path / "batches", source, "2026-10-25T00:00:00Z", 42, RiskThresholds())

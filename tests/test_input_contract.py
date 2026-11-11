@@ -13,6 +13,7 @@ UNITS = {"temperature_c": 60.0, "vibration_mm_s": 2.0, "pressure_bar": 5.0}
 
 @pytest.mark.parametrize("measurements", [SHORT, UNITS, SHORT | UNITS])
 def test_supported_names(measurements):
+    """Obtener las mismas mediciones con nombres cortos, con unidades o ambos."""
     record, _ = validate_and_normalize_record(json.dumps(BASE | measurements))
     assert {key: record[key] for key in SHORT} == SHORT
 
@@ -20,11 +21,13 @@ def test_supported_names(measurements):
 @pytest.mark.parametrize("alias", list(UNITS))
 @pytest.mark.parametrize("value", [99, None, True, "60"])
 def test_alias_never_hides_conflicting_or_invalid_value(alias, value):
+    """Rechazar alias contradictorios o inválidos aunque el campo corto sea válido."""
     with pytest.raises(ValueError):
         validate_and_normalize_record(json.dumps(BASE | SHORT | UNITS | {alias: value}))
 
 
 def test_ingestion_rejects_keep_source_and_line_numbers(tmp_path):
+    """Conservar el texto y la posición de cada línea en los archivos de auditoría."""
     lines = [json.dumps(BASE | UNITS), "", "{broken", json.dumps(BASE | SHORT | {"temperature_c": 99})]
     source = tmp_path / "input.jsonl"
     source.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -43,6 +46,7 @@ def test_ingestion_rejects_keep_source_and_line_numbers(tmp_path):
 
 
 def test_all_rejected_and_strict_audit(tmp_path):
+    """Escribir la auditoría de un lote inválido incluso cuando el modo estricto falla."""
     source = tmp_path / "bad.jsonl"
     source.write_text("{broken\n", encoding="utf-8")
     result = ingest_telemetry_batch(source, tmp_path / "lake")
@@ -54,6 +58,7 @@ def test_all_rejected_and_strict_audit(tmp_path):
 
 
 def test_dashboard_time_filter_configuration():
+    """Filtrar las tendencias por tiempo y conservar el último estado en el ranking."""
     dashboard = json.loads((Path(__file__).parents[1] / "dashboards" / "machines.json").read_text(encoding="utf-8"))
     ranking, *trends = dashboard["panels"]
     ranking_sql = ranking["targets"][0]["rawSql"]

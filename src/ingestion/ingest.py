@@ -9,6 +9,7 @@ import json
 import math
 import os
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import threading
 from typing import Any, Iterator
 
@@ -412,8 +413,11 @@ def ingest_telemetry_batch(
     audit_dir.mkdir(parents=True, exist_ok=True)
     rejected_path = audit_dir / f"{batch_tag}_rejected.jsonl"
     normalized_path = audit_dir / f"{batch_tag}_normalized.jsonl"
-    for path, lines in ((rejected_path, rejected_lines), (normalized_path, normalized_lines)):
-        path.write_text("".join(line + "\n" for line in lines), encoding="utf-8")
+    with TemporaryDirectory(dir=audit_dir) as temp:
+        for path, lines in ((rejected_path, rejected_lines), (normalized_path, normalized_lines)):
+            staged_path = Path(temp) / path.name
+            staged_path.write_text("".join(line + "\n" for line in lines), encoding="utf-8")
+            staged_path.replace(path)
     if strict and invalid_count:
         raise ValueError(f"{invalid_count} líneas inválidas. Auditoría en {rejected_path}")
 
