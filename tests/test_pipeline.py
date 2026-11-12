@@ -14,7 +14,7 @@ def test_export_preserves_quality_utc_and_historical_alerts(tmp_path):
     source = Path(__file__).parent / "fixtures" / "pipeline_sample.jsonl"
     arguments = (tmp_path, source, "2026-10-25T00:00:00Z", 42, RiskThresholds())
     legacy_identity = {"source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
-                       "thresholds": asdict(RiskThresholds())}
+                       "thresholds": asdict(RiskThresholds()), "pipeline_version": 5}
     legacy_id = hashlib.sha256(json.dumps(legacy_identity, sort_keys=True).encode("utf-8")).hexdigest()
     legacy_dir = tmp_path / legacy_id
     legacy_dir.mkdir()
@@ -24,7 +24,7 @@ def test_export_preserves_quality_utc_and_historical_alerts(tmp_path):
     assert json.loads((legacy_dir / MANIFEST).read_text(encoding="utf-8")) == legacy_identity
     manifest_path = batch / MANIFEST
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert manifest["pipeline_version"] == 5
+    assert manifest["pipeline_version"] == 6
     assert prepare_batch(*arguments) == batch
     assert json.loads(manifest_path.read_text(encoding="utf-8")) == manifest
     assert manifest["ingestion"]["rejected"] == 1
@@ -32,6 +32,7 @@ def test_export_preserves_quality_utc_and_historical_alerts(tmp_path):
     assert manifest["balance"] == {"received": 8, "ingestion_rejected": 1, "spark_rejected": 3, "valid": 4}
     ingestion_rejected = json.loads((batch / "results" / "ingestion_rejected.jsonl").read_text(encoding="utf-8"))
     assert ingestion_rejected["line_number"] == 8
+    assert ingestion_rejected["batch_id"] == manifest["batch_id"]
     assert ingestion_rejected["raw_line"] == source.read_text(encoding="utf-8").splitlines()[7]
     assert list((batch / "lake" / "historical").rglob("*.parquet"))
 
@@ -44,6 +45,7 @@ def test_export_preserves_quality_utc_and_historical_alerts(tmp_path):
     assert len(load_dataframe(results / "clean_telemetry.parquet")) == 4
     assert len(load_dataframe(results / "rejected_telemetry.parquet")) == 3
     rejected = load_dataframe(results / "rejected_telemetry.parquet")
+    assert set(rejected["batch_id"]) == {manifest["batch_id"]}
     assert set(rejected["line_number"]) == {1, 6, 7}
     originals = source.read_text(encoding="utf-8").splitlines()
     assert all(row.raw_line == originals[row.line_number - 1] for row in rejected.itertuples())

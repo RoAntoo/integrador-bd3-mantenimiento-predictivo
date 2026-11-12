@@ -8,6 +8,7 @@ import unittest
 from src.processing.quality import QualityMetrics, clean_telemetry
 from src.processing.schema import TELEMETRY_SCHEMA
 from src.processing.spark import create_spark_session
+from src.jsonl import file_sha256
 
 
 SAMPLE_PATH = Path(__file__).parent / "fixtures" / "processing_sample.jsonl"
@@ -61,6 +62,25 @@ class QualityTests(unittest.TestCase):
             [row.raw_line for row in result.rejected.collect()], [first, first]
             if extra < first else [first, extra],
         )
+
+    def test_rejection_batch_id_defaults_to_hash_or_uses_explicit_identity(self):
+        path = self.write_lines([self.record(pressure=None)])
+        default = clean_telemetry(self.spark, path)
+        self.assertEqual(default.rejected.first().batch_id, file_sha256(path))
+        explicit = clean_telemetry(self.spark, path, batch_id="manifest-batch")
+        self.assertEqual(explicit.rejected.first().batch_id, "manifest-batch")
+
+    def test_identical_normalized_duplicates_retain_lowest_source_line_number(self):
+        original = self.record()
+        path = self.write_lines([
+            self.record(source_raw_line=original, source_line_number=number)
+            for number in (20, 3, 8)
+        ])
+        result = clean_telemetry(self.spark, path, normalized_input=True, batch_id="manifest-batch")
+        self.assertEqual(result.metrics, QualityMetrics(3, 1, 2, 2))
+        rejected = result.rejected.collect()
+        self.assertEqual({row.line_number for row in rejected}, {8, 20})
+        self.assertTrue(all(row.raw_line == original and row.batch_id == "manifest-batch" for row in rejected))
 
     def test_conflicting_measurements_reject_every_row_of_key(self):
         first = self.record()
@@ -219,6 +239,18 @@ class QualityTests(unittest.TestCase):
         self.assert_counts(empty, 0, 0, 0, 0)
         with self.assertRaisesRegex(FileNotFoundError, "archivo de entrada"):
             clean_telemetry(self.spark, SAMPLE_PATH.with_name("nonexistent.jsonl"))
+
+    def test_trailing_blank_lines_and_unicode_keep_original_line_numbers(self):
+        first = self.record(pressure=None, note="a\u2028b\u0085c")
+        path = self.write_lines([first, "", ""])
+        # También conservar el conteo con terminadores Windows.
+        path.write_bytes(("\r\n".join([first, "", ""]) + "\r\n").encode("utf-8"))
+        result = clean_telemetry(self.spark, path)
+        self.assert_counts(result, 3, 0, 3, 0)
+        rejected = result.rejected.orderBy("line_number").collect()
+        self.assertEqual([row.line_number for row in rejected], [1, 2, 3])
+        self.assertEqual([row.raw_line for row in rejected], [first, "", ""])
+        self.assertTrue(all(row.stage == "spark" and row.batch_id for row in rejected))
 
 
 if __name__ == "__main__":

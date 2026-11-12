@@ -18,7 +18,7 @@ from src.processing.spark import create_spark_session
 
 
 MANIFEST = "batch.json"
-PIPELINE_VERSION = 5
+PIPELINE_VERSION = 6
 
 
 def prepare_batch(work_dir: Path, input_path: Path | None, start_time: str, seed: int,
@@ -47,11 +47,11 @@ def prepare_batch(work_dir: Path, input_path: Path | None, start_time: str, seed
             return batch_dir
 
         calculated_at = datetime.now(timezone.utc)
-        ingestion = ingest_telemetry_batch(source, stage / "lake")
+        ingestion = ingest_telemetry_batch(source, stage / "lake", batch_id=batch_id)
         spark = create_spark_session()
         try:
             result = analyze_telemetry(spark, ingestion.normalized_path, calculated_at, thresholds,
-                                       normalized_input=True)
+                                       normalized_input=True, batch_id=batch_id)
             export_results(result, thresholds, stage / "results")
         finally:
             spark.stop()

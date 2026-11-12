@@ -9,6 +9,7 @@ from pyspark.sql import Column, DataFrame, SparkSession, Window
 from pyspark.sql import functions as F
 from pyspark.sql.types import LongType, StringType, StructField, StructType
 
+from src.jsonl import file_sha256
 from src.processing.schema import TELEMETRY_SCHEMA
 from src.processing.spark import create_spark_session
 from src.processing.validation import (
@@ -103,21 +104,37 @@ class QualityResult:
     metrics: QualityMetrics
 
 
-def _parse_lines(spark: SparkSession, input_path: Path, normalized_input: bool = False) -> DataFrame:
+def _parse_lines(spark: SparkSession, input_path: Path, normalized_input: bool = False,
+                 batch_id: str | None = None) -> DataFrame:
     """Leer una fila por línea y conservar el texto aun si falla el parseo."""
     options = {
         **JSON_OPTIONS,
         "mode": "PERMISSIVE",
         "columnNameOfCorruptRecord": CORRUPT_RECORD_FIELD,
     }
-    schema = QUALITY_SCHEMA
+    batch_id = file_sha256(input_path) if batch_id is None else batch_id
     if normalized_input:
         schema = StructType([*QUALITY_SCHEMA.fields,
                              StructField("source_raw_line", StringType(), True),
                              StructField("source_line_number", LongType(), True)])
+        lines = (spark.read.text(input_path.as_uri()).select(F.col("value").alias("raw_line"))
+                 .withColumn("batch_id", F.lit(batch_id)))
+    else:
+        schema = QUALITY_SCHEMA
+        lines = (
+            spark.read.text(input_path.as_uri(), wholetext=True)
+            .filter(F.length("value") > 0)
+            .select(F.posexplode(F.split(
+                F.regexp_replace("value", r"(?:\r\n|\r|\n)\z", ""), r"\r\n|\r|\n", -1,
+            )).alias("_position", "raw_line"))
+            .select((F.col("_position") + 1).cast("long").alias("line_number"), "raw_line")
+            .withColumn("batch_id", F.lit(batch_id))
+        )
+    parsed_columns = ["batch_id", "raw_line", "_parse_error", "_parsed.*"]
+    if not normalized_input:
+        parsed_columns.insert(0, "line_number")
     parsed = (
-        spark.read.text(input_path.as_uri())
-        .select(F.col("value").alias("raw_line"))
+        lines
         .withColumn("_complete_object", F.lit(True) if normalized_input
                     else _is_complete_json_object(F.col("raw_line")))
         .withColumn("_parsed", F.from_json("raw_line", schema, options))
@@ -127,7 +144,7 @@ def _parse_lines(spark: SparkSession, input_path: Path, normalized_input: bool =
             | F.col("_parsed").isNull()
             | F.col(f"_parsed.{CORRUPT_RECORD_FIELD}").isNotNull(),
         )
-        .select("raw_line", "_parse_error", "_parsed.*")
+        .select(*parsed_columns)
     )
 
     if normalized_input:
@@ -183,7 +200,7 @@ def _classify_duplicates(candidates: DataFrame) -> DataFrame:
             for field in MEASUREMENT_FIELDS
         ],
     )
-    window = Window.partitionBy("machine_id", "timestamp").orderBy("raw_line")
+    window = Window.partitionBy("machine_id", "timestamp").orderBy("raw_line", "line_number")
     duplicate_reason = (
         F.when(different_measurement, F.lit("CONFLICTING_DUPLICATE_KEY"))
         .when(F.row_number().over(window) > 1, F.lit("DUPLICATE_KEY"))
@@ -198,9 +215,10 @@ def _classify_duplicates(candidates: DataFrame) -> DataFrame:
     )
 
 
-def clean_telemetry(spark: SparkSession, input_path: str | Path, *, normalized_input: bool = False) -> QualityResult:
+def clean_telemetry(spark: SparkSession, input_path: str | Path, *, normalized_input: bool = False,
+                    batch_id: str | None = None) -> QualityResult:
     """Separar lecturas válidas y rechazadas, y contar un lote JSONL local."""
-    parsed = _parse_lines(spark, resolve_input_path(input_path), normalized_input)
+    parsed = _parse_lines(spark, resolve_input_path(input_path), normalized_input, batch_id)
     classified_content = _classify_content(parsed)
     invalid = classified_content.filter(F.size("rejection_reasons") > 0)
     candidates = classified_content.filter(F.size("rejection_reasons") == 0)
@@ -225,8 +243,8 @@ def clean_telemetry(spark: SparkSession, input_path: str | Path, *, normalized_i
     return QualityResult(
         valid=classified.filter(~is_rejected).select(*REQUIRED_FIELDS),
         rejected=classified.filter(is_rejected).select(
-            "raw_line", *(["line_number"] if normalized_input else []), *REQUIRED_FIELDS, "rejection_reasons"
-        ),
+            "batch_id", "line_number", "raw_line", *REQUIRED_FIELDS, "rejection_reasons"
+        ).withColumn("stage", F.lit("spark")),
         metrics=metrics,
     )
 

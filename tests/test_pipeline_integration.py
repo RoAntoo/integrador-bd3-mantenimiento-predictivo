@@ -137,3 +137,29 @@ def test_real_pipeline_persistence_retry_and_dashboard(tmp_path, monkeypatch):
             with closing(get_pg_connection()) as connection, connection, connection.cursor() as cursor:
                 cursor.execute("DELETE FROM machines WHERE machine_id = ANY(%s)", (owned_ids,))
             alerts.delete_many({"machine_id": {"$in": owned_ids}})
+
+
+def test_rejected_batch_preserves_existing_postgres_risk(tmp_path):
+    """Un lote totalmente rechazado no toca el estado previo de una máquina real."""
+    machine = f"DIRTY-KEEP-{uuid4().hex[:12]}"
+    good = tmp_path / "good.jsonl"
+    good.write_text(json.dumps(dict(machine_id=machine, timestamp="2026-10-25T12:00:00Z",
+                                   temperature=110, vibration=2, pressure=5)) + "\n", encoding="utf-8")
+    bad = tmp_path / "bad.jsonl"
+    bad.write_text(json.dumps(dict(machine_id=machine, timestamp="2026-10-25T12:05:00Z",
+                                  temperature=None, vibration=2, pressure=5)) + "\n", encoding="utf-8")
+    try:
+        first = prepare_batch(tmp_path / "batches", good, "2026-10-25T00:00:00Z", 42, RiskThresholds())
+        load_batch(first, first.name)
+        query = "SELECT calculated_at, risk_level, risk_reason, window_start FROM machine_risk_latest WHERE machine_id = %s"
+        previous = fetch(query, (machine,))
+        assert len(previous) == 1 and previous[0][1] == "ROJO"
+        rejected = prepare_batch(tmp_path / "batches", bad, "2026-10-25T00:00:00Z", 42, RiskThresholds())
+        load_batch(rejected, rejected.name)
+        assert fetch(query, (machine,)) == previous
+        assert fetch("SELECT COUNT(*) FROM sensor_metrics_5m WHERE machine_id = %s", (machine,)) == [(1,)]
+    finally:
+        with closing(get_pg_connection()) as connection, connection, connection.cursor() as cursor:
+            cursor.execute("DELETE FROM machines WHERE machine_id = %s", (machine,))
+        with get_mongo_client() as mongo:
+            mongo[os.getenv("MONGO_DB", "mantenimiento_predictivo")]["alerts"].delete_many({"machine_id": machine})

@@ -54,7 +54,7 @@ def test_all_rejected_and_strict_audit(tmp_path):
     assert result.normalized_path.read_bytes() == b""
     with pytest.raises(ValueError, match="Auditoría"):
         ingest_telemetry_batch(source, tmp_path / "strict", strict=True)
-    assert len(list((tmp_path / "strict" / "audit").glob("*_rejected.jsonl"))) == 1
+    assert len(list((tmp_path / "strict" / "audit").rglob("*_rejected.jsonl"))) == 1
 
 
 @pytest.mark.parametrize("field", list(SHORT) + list(UNITS))
@@ -68,7 +68,7 @@ def test_unrepresentable_measurement_keeps_valid_lines_and_audit(tmp_path, field
     result = ingest_telemetry_batch(source, tmp_path / "lake")
     assert (result.total_received, result.valid_records, result.invalid_records) == (3, 2, 1)
     rejected = json.loads(result.rejected_path.read_text(encoding="utf-8"))
-    assert rejected == {"line_number": 2, "reason": f"NON_FINITE_MEASUREMENT: {field}",
+    assert rejected == {"batch_id": result.sha256, "line_number": 2, "reason": f"NON_FINITE_MEASUREMENT: {field}",
                         "raw_line": invalid}
     normalized = [json.loads(line) for line in result.normalized_path.read_text(encoding="utf-8").splitlines()]
     assert [row["source_line_number"] for row in normalized] == [1, 3]
