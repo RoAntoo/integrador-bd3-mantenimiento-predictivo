@@ -1,0 +1,10 @@
+{"machine_id":"DIRTY-MISSING","timestamp":"2026-10-25T12:00:00Z","vibration":2,"pressure":5}
+{"machine_id":"DIRTY-NULL","timestamp":"2026-10-25T12:00:00Z","temperature":60,"vibration":null,"vibration_mm_s":null,"pressure":5}
+{"machine_id":"DIRTY-TYPE","timestamp":"2026-10-25T12:00:00Z","temperature":"error","temperature_c":"error","vibration":2,"pressure":5}
+{"machine_id":"DIRTY-DATE","timestamp":"2026-02-30T12:00:00Z","temperature":60,"vibration":2,"pressure":5}
+{"machine_id":
+{"machine_id":"DIRTY-COPY","timestamp":"2026-10-25T12:00:00Z","temperature":60,"vibration":2,"pressure":5}
+{"machine_id":"DIRTY-COPY","timestamp":"2026-10-25T12:00:00Z","temperature":60,"vibration":2,"pressure":5}
+{"machine_id":"DIRTY-CONFLICT","timestamp":"2026-10-25T12:00:00Z","temperature":60,"vibration":2,"pressure":5}
+{"machine_id":"DIRTY-CONFLICT","timestamp":"2026-10-25T12:00:00Z","temperature":110,"vibration":2,"pressure":5}
+{"machine_id":"DIRTY-ANOMALY","timestamp":"2026-10-25T12:00:00Z","temperature":110,"vibration":8,"pressure":9,"is_anomaly":true,"anomaly_type":"overheating_spike"}

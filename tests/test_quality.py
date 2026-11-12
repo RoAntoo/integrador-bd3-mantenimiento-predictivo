@@ -210,6 +210,18 @@ class QualityTests(unittest.TestCase):
         with self.assertRaisesRegex(FileNotFoundError, "archivo de entrada"):
             clean_telemetry(self.spark, SAMPLE_PATH.with_name("nonexistent.jsonl"))
 
+    def test_trailing_blank_lines_and_unicode_keep_original_line_numbers(self):
+        first = self.record(pressure=None, note="a\u2028b\u0085c")
+        path = self.write_lines([first, "", ""])
+        # También conservar el conteo con terminadores Windows.
+        path.write_bytes(("\r\n".join([first, "", ""]) + "\r\n").encode("utf-8"))
+        result = clean_telemetry(self.spark, path)
+        self.assert_counts(result, 3, 0, 3, 0)
+        rejected = result.rejected.orderBy("line_number").collect()
+        self.assertEqual([row.line_number for row in rejected], [1, 2, 3])
+        self.assertEqual([row.raw_line for row in rejected], [first, "", ""])
+        self.assertTrue(all(row.stage == "spark" and row.batch_id for row in rejected))
+
 
 if __name__ == "__main__":
     unittest.main()

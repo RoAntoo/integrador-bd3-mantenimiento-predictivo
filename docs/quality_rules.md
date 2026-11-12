@@ -5,6 +5,13 @@ input_path)`. Devuelve `QualityResult.valid`, `QualityResult.rejected` y
 `QualityResult.metrics`. El lector estricto `read_telemetry` del primer PR sigue
 disponible y conserva sus errores y su comportamiento ante duplicados.
 
+El pipeline integrado usa `clean_telemetry(..., audited=True)` sobre el
+intercambio de ingesta: valida la representación normalizada y conserva el
+`raw_line` recibido originalmente, `batch_id`, `line_number` y `stage="spark"`
+en cada rechazo. Los rechazos de ingesta se guardan aparte. El lector directo
+numera las líneas del archivo local desde 1 y usa su SHA-256 como identificador.
+Ver [demostración y reconciliación](dirty_data_demo.md).
+
 ## Lectura y reglas
 
 Se lee el archivo como texto, una fila por línea física, para conservar el
@@ -42,6 +49,7 @@ los instantes con zona horaria y la sesión los normaliza a UTC. Una fila invál
 no compite con una válida que tenga la misma clave. Para copias idénticas se
 conserva una; si las líneas difieren por formato o campos adicionales, se
 conserva la menor línea en orden lexicográfico, sin cambiar la lectura parseada.
+Si el texto es idéntico, se conserva el menor número de línea original.
 Los campos adicionales no forman parte de la comparación.
 
 No se aplican rangos físicos, estadísticas por máquina ni reglas de riesgo: una

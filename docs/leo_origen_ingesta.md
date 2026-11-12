@@ -42,11 +42,19 @@ El script [`src/ingestion/ingest.py`](../src/ingestion/ingest.py) implementa el 
    - Verifica la estructura JSON, tipos numéricos finitos y marcas temporales UTC.
    - Calcula el hash `SHA-256` del lote, tamaño en bytes, conteo de líneas recibidas/válidas/inválidas, máquinas involucradas y rango temporal (`min_timestamp` y `max_timestamp`).
 2. **Zona `raw`**:
-   - En modo permisivo, omite las líneas rechazadas (que permanecen únicamente en el archivo de entrada original) y copia las lecturas válidas organizadas por fecha en `<lake_root>/raw/date=YYYY-MM-DD/<batch_tag>.jsonl`.
+   - En modo permisivo, conserva cada rechazo con etapa, motivo, línea y lote en `<lake_root>/audit/<batch_tag>_rejected.jsonl`, y copia las lecturas aceptadas por fecha en `<lake_root>/raw/date=YYYY-MM-DD/<batch_tag>.jsonl`.
+   - El intercambio `<lake_root>/audit/<batch_tag>_accepted.jsonl` conserva las referencias originales junto con las líneas normalizadas. Los lotes vacíos o sin aceptados también se auditan.
    - Actualiza de forma idempotente el manifiesto `<lake_root>/raw/_ingestion_manifest.jsonl`.
 3. **Zona `historical` en formato Parquet particionado (`date=YYYY-MM-DD`)**:
    - Escribe los registros validados y deduplicados por `(machine_id, timestamp)` en `<lake_root>/historical/telemetry/date=YYYY-MM-DD/part-<batch_tag>.parquet`.
    - **Idempotencia**: volver a ejecutar la ingesta sobre el mismo lote detecta el `SHA-256` previo, consolida la partición del lote y no duplica filas ni entradas en el manifiesto.
+
+En el pipeline integrado se usa `write_historical=False` y el histórico se escribe
+desde los válidos finales de Spark. Así los conflictos no llegan al histórico
+curado, estadísticas ni alertas. El comando independiente de ingesta conserva su
+consolidación anterior; su conteo de válidos significa aceptados por ingesta.
+La [demo de contaminación](dirty_data_demo.md) documenta las opciones independientes
+del generador y el balance entre las dos etapas.
 
 ### Comparativa práctica: JSONL vs. Parquet en el Data Lake
 - **JSONL (Zona `raw`)**: formato semiestructurado orientado a filas y legible por humanos; conserva las líneas válidas recibidas en texto plano por fecha junto con el manifiesto de conteos del lote.

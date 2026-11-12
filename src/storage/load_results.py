@@ -64,6 +64,11 @@ def upsert_postgres(metrics_path: Path, risk_path: Path, *, batch_id: str | None
     df_metrics = load_dataframe(metrics_path)
     df_risk = load_dataframe(risk_path)
 
+    # Un lote sin lecturas válidas no crea máquinas ni reemplaza riesgos previos.
+    if df_metrics.empty and df_risk.empty:
+        print("[PostgreSQL] Lote vacío: se conservan las métricas y estados anteriores.")
+        return
+
     # Extraer todas las maquinas unicas para asegurar que existan en el catalogo
     machine_ids = set(df_metrics["machine_id"]).union(df_risk["machine_id"])
     if any(not isinstance(machine_id, str) or not machine_id.strip() or len(machine_id) > 50

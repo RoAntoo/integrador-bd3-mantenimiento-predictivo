@@ -2,13 +2,15 @@
 
 ## Intercambio del pipeline (PR #4)
 
-El pipeline procesa el JSONL de Leo con los nombres cortos y las fechas con
-zona que requiere Spark. La ingesta conserva el original y genera raw e
-histórico por lote. Spark consume las líneas raw aceptadas por Leo, que aún
-incluyen duplicados. El manifiesto separa los descartes de ingesta de los
-rechazos de calidad. El Parquet curado contiene los cinco campos de calidad y
-`data_quality_flag = VALID`. El Parquet de rechazos conserva las líneas raw y sus
-motivos. Los campos adicionales del generador siguen en el histórico de Leo.
+El pipeline conserva el JSONL original y la entrada eventualmente contaminada.
+La ingesta genera raw y un intercambio auditado con representación normalizada,
+identificador del lote, número de línea y texto original. Spark consume todos los
+aceptados, incluidos duplicados; conserva esa identidad en sus rechazos. El
+histórico integrado se escribe después de Spark y contiene únicamente curado:
+los cinco campos de calidad y `data_quality_flag = VALID`. Los campos adicionales
+siguen disponibles en los originales y la auditoría de ingesta. El manifiesto
+separa rechazos por etapa y verifica la reconciliación global. Ver la
+[demostración de datos sucios](dirty_data_demo.md).
 
 | Archivo | Contrato |
 | --- | --- |
@@ -23,7 +25,8 @@ local materializa un DataFrame por vez en memoria para escribir Parquet con
 PyArrow. Está pensado para los lotes de la demo.
 
 Cada clave `(machine_id, window_start)` publicable pertenece a un solo lote,
-identificado por el SHA-256 de la entrada y la configuración de umbrales. Se
+identificado por hashes de entrada, umbrales y versiones/configuración del pipeline
+y del contaminador. Se
 aceptan ventanas con pocas lecturas como cerradas. Si otro lote aporta datos a
 la misma clave, PostgreSQL revierte toda su carga. La combinación de ventanas
 parciales y las correcciones de ventanas publicadas quedan fuera del MVP.

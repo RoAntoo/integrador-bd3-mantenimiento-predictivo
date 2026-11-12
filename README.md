@@ -24,6 +24,10 @@ módulos y puede exportar sin servicios o cargar los resultados en Compose.
 
 ## Ejecutar el pipeline (PR #4)
 
+La [demostración de datos sucios](docs/dirty_data_demo.md) agrega contaminación
+opcional con `--dirty-rate` y `--dirty-seed`, cuarentenas por etapa y balance de
+conteos. Está desactivada por defecto y conserva las anomalías industriales.
+
 Desde la raíz, creá el entorno virtual con Python 3.12, configurá el JDK 17 o
 21 e instalá `requirements.txt` según las instrucciones de instalación más abajo.
 En Windows, con el Python de ese entorno:
@@ -36,9 +40,10 @@ El preset genera tres máquinas durante una hora, con semilla 42 e inicio UTC
 fijo. Para procesar otro lote de Leo usá `--input ruta/al/lote.jsonl`. También
 podés pasar `--seed`, `--start-time`, `--thresholds` o `--work-dir`. La
 consola muestra la ruta `artifacts/pipeline/<batch_id>` y los conteos de ingesta
-y de calidad. El directorio contiene el JSONL original, `lake/` con el raw y el
-Parquet histórico de Leo, y `results/` con Parquet curado, rechazos, estadísticas,
-métricas, riesgo y alertas JSONL.
+y de calidad. El directorio conserva el JSONL previo y posterior a la
+contaminación, `lake/` con raw, auditoría e histórico curado, y `results/` con
+Parquet curado, rechazos de ingesta y Spark, estadísticas, métricas, riesgo y
+alertas JSONL. El histórico integrado se escribe después de la calidad de Spark.
 
 Si el preset ya está cargado, cambiar la semilla (`--seed`) o los umbrales
 (`--thresholds`) genera otro identificador de lote. PostgreSQL rechaza la carga

@@ -23,10 +23,11 @@ class AnalysisResult:
 
 def analyze_telemetry(spark: SparkSession, input_path: str | Path,
                       calculated_at: datetime,
-                      thresholds: RiskThresholds = RiskThresholds()) -> AnalysisResult:
+                      thresholds: RiskThresholds = RiskThresholds(), *,
+                      audited: bool = False) -> AnalysisResult:
     """Conservar el resultado de calidad y derivar tres DataFrames independientes."""
     instant = execution_time(calculated_at)
-    quality = clean_telemetry(spark, input_path)
+    quality = clean_telemetry(spark, input_path, audited=audited)
     metrics = sensor_metrics_5m(quality.valid)
     return AnalysisResult(quality, machine_statistics(quality.valid), metrics,
                           classify_risk(metrics, instant, thresholds))
