@@ -366,11 +366,15 @@ def ingest_telemetry_batch(
     lake_root: str | Path = DEFAULT_LAKE_ROOT,
     strict: bool = False,
     upload_azure: bool = False,
+    *,
+    batch_id: str | None = None,
 ) -> IngestionResult:
     """Validar un archivo JSONL entrante, copiar líneas válidas a zona raw y escribir Parquet.
 
     En modo permisivo (`strict=False`), las líneas inválidas se contabilizan en `invalid_records`
     y se conservan con su línea original y motivo en un JSONL de rechazos.
+    Las auditorías se separan por lote; repetir el mismo lote las reemplaza
+    atómicamente. Sin batch_id se utiliza el SHA-256 de la entrada.
     """
     source = Path(input_path).resolve()
     if not source.is_file():
@@ -378,6 +382,7 @@ def ingest_telemetry_batch(
 
     lake_dir = Path(lake_root).resolve()
     sha256 = _compute_sha256(source)
+    batch_id = sha256 if batch_id is None else batch_id
     file_size = source.stat().st_size
 
     raw_lines = source.read_text(encoding="utf-8").splitlines()
@@ -398,7 +403,8 @@ def ingest_telemetry_batch(
         except (ValueError, json.JSONDecodeError) as error:
             invalid_count += 1
             rejected_lines.append(json.dumps({
-                "line_number": line_number, "reason": str(error), "raw_line": raw_line,
+                "batch_id": batch_id, "line_number": line_number,
+                "reason": str(error), "raw_line": raw_line,
             }, ensure_ascii=False))
             continue
 
@@ -415,7 +421,9 @@ def ingest_telemetry_batch(
         by_date_records.setdefault(part_date, {})[key] = normalized
 
     batch_tag = f"{source.stem}_{sha256[:10]}"
-    audit_dir = lake_dir / "audit"
+    # Hash del identificador: aísla lotes y evita interpretarlo como una ruta.
+    audit_key = hashlib.sha256(batch_id.encode("utf-8")).hexdigest()
+    audit_dir = lake_dir / "audit" / audit_key
     audit_dir.mkdir(parents=True, exist_ok=True)
     rejected_path = audit_dir / f"{batch_tag}_rejected.jsonl"
     normalized_path = audit_dir / f"{batch_tag}_normalized.jsonl"

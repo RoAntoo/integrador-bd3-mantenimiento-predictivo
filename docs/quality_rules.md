@@ -5,11 +5,13 @@ input_path)`. Devuelve `QualityResult.valid`, `QualityResult.rejected` y
 `QualityResult.metrics`. El lector estricto `read_telemetry` del primer PR sigue
 disponible y conserva sus errores y su comportamiento ante duplicados.
 
-El pipeline integrado usa `clean_telemetry(..., audited=True)` sobre el
+El pipeline integrado usa `clean_telemetry(..., normalized_input=True, batch_id=batch_id)` sobre el
 intercambio de ingesta: valida la representación normalizada y conserva el
 `raw_line` recibido originalmente, `batch_id`, `line_number` y `stage="spark"`
 en cada rechazo. Los rechazos de ingesta se guardan aparte. El lector directo
 numera las líneas del archivo local desde 1 y usa su SHA-256 como identificador.
+El argumento opcional `batch_id` permite usar la identidad del manifiesto;
+si se omite, se conserva el SHA-256 del archivo de entrada como valor predeterminado.
 Ver [demostración y reconciliación](dirty_data_demo.md).
 
 ## Lectura y reglas
@@ -82,3 +84,9 @@ Los llamadores anteriores conservan su contrato y sus cinco campos cortos.
 La auditoría de ingesta está separada de la auditoría Spark. Las líneas rechazadas
 por ingesta no se reciben en Spark. El manifiesto global cuenta los duplicados
 como parte de los rechazos de Spark, sin sumarlos nuevamente.
+
+Las auditorías de ingesta se conservan en `audit/<SHA256(batch_id)>/`, con los
+nombres `<batch_tag>_normalized.jsonl` y `<batch_tag>_rejected.jsonl`. Distintos
+lotes no sobrescriben sus auditorías aunque compartan entrada. Repetir el mismo
+lote reemplaza atómicamente sus archivos, de forma idempotente; sin identificador
+explícito se usa el SHA-256 de la entrada. Los nombres raw y Parquet no cambian.

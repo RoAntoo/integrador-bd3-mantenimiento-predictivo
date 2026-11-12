@@ -49,7 +49,7 @@ def contaminate_jsonl(input_path: str | Path, output_path: str | Path,
     if isinstance(dirty_seed, bool) or not isinstance(dirty_seed, int):
         raise ValueError("dirty_seed debe ser un entero.")
     source, output = Path(input_path).resolve(), Path(output_path).resolve()
-    if source == output:
+    if source == output or (output.exists() and source.samefile(output)):
         raise ValueError("La salida contaminada debe ser distinta del original.")
     lines = read_jsonl_lines(source)
     total = len(lines)

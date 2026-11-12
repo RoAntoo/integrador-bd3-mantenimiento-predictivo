@@ -104,19 +104,21 @@ class QualityResult:
     metrics: QualityMetrics
 
 
-def _parse_lines(spark: SparkSession, input_path: Path, normalized_input: bool = False) -> DataFrame:
+def _parse_lines(spark: SparkSession, input_path: Path, normalized_input: bool = False,
+                 batch_id: str | None = None) -> DataFrame:
     """Leer una fila por línea y conservar el texto aun si falla el parseo."""
     options = {
         **JSON_OPTIONS,
         "mode": "PERMISSIVE",
         "columnNameOfCorruptRecord": CORRUPT_RECORD_FIELD,
     }
+    batch_id = file_sha256(input_path) if batch_id is None else batch_id
     if normalized_input:
         schema = StructType([*QUALITY_SCHEMA.fields,
                              StructField("source_raw_line", StringType(), True),
                              StructField("source_line_number", LongType(), True)])
         lines = (spark.read.text(input_path.as_uri()).select(F.col("value").alias("raw_line"))
-                 .withColumn("batch_id", F.lit(file_sha256(input_path))))
+                 .withColumn("batch_id", F.lit(batch_id)))
     else:
         schema = QUALITY_SCHEMA
         lines = (
@@ -126,7 +128,7 @@ def _parse_lines(spark: SparkSession, input_path: Path, normalized_input: bool =
                 F.regexp_replace("value", r"(?:\r\n|\r|\n)\z", ""), r"\r\n|\r|\n", -1,
             )).alias("_position", "raw_line"))
             .select((F.col("_position") + 1).cast("long").alias("line_number"), "raw_line")
-            .withColumn("batch_id", F.lit(file_sha256(input_path)))
+            .withColumn("batch_id", F.lit(batch_id))
         )
     parsed_columns = ["batch_id", "raw_line", "_parse_error", "_parsed.*"]
     if not normalized_input:
@@ -198,7 +200,7 @@ def _classify_duplicates(candidates: DataFrame) -> DataFrame:
             for field in MEASUREMENT_FIELDS
         ],
     )
-    window = Window.partitionBy("machine_id", "timestamp").orderBy("raw_line")
+    window = Window.partitionBy("machine_id", "timestamp").orderBy("raw_line", "line_number")
     duplicate_reason = (
         F.when(different_measurement, F.lit("CONFLICTING_DUPLICATE_KEY"))
         .when(F.row_number().over(window) > 1, F.lit("DUPLICATE_KEY"))
@@ -213,9 +215,10 @@ def _classify_duplicates(candidates: DataFrame) -> DataFrame:
     )
 
 
-def clean_telemetry(spark: SparkSession, input_path: str | Path, *, normalized_input: bool = False) -> QualityResult:
+def clean_telemetry(spark: SparkSession, input_path: str | Path, *, normalized_input: bool = False,
+                    batch_id: str | None = None) -> QualityResult:
     """Separar lecturas válidas y rechazadas, y contar un lote JSONL local."""
-    parsed = _parse_lines(spark, resolve_input_path(input_path), normalized_input)
+    parsed = _parse_lines(spark, resolve_input_path(input_path), normalized_input, batch_id)
     classified_content = _classify_content(parsed)
     invalid = classified_content.filter(F.size("rejection_reasons") > 0)
     candidates = classified_content.filter(F.size("rejection_reasons") == 0)

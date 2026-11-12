@@ -17,10 +17,13 @@ El lector estricto y el análisis directo mantienen su contrato histórico de ci
 campos cortos. Para admitir ambas variantes se utiliza el pipeline integrado.
 
 El lote conserva `telemetry.jsonl` original y dos auditorías separadas.
-`results/ingestion_rejected.jsonl` contiene `line_number`, `reason` y `raw_line`.
-`results/rejected_telemetry.parquet` contiene `line_number`, `raw_line`, los cinco
+`results/ingestion_rejected.jsonl` contiene `batch_id`, `line_number`, `reason` y `raw_line`.
+`results/rejected_telemetry.parquet` contiene `batch_id`, `line_number`, `raw_line`, los cinco
 campos parseados y `rejection_reasons`. El rechazo de ingesta no vuelve a entrar
 a Spark. Los duplicados ya están incluidos en los rechazos de Spark.
+El pipeline propaga la identidad del manifiesto a ambas auditorías. En ingesta,
+los archivos se separan bajo `audit/<SHA256(batch_id)>/`; repetir el mismo lote
+los reemplaza atómicamente, sin cambiar los nombres raw y Parquet.
 
 `batch.json.balance` verifica la igualdad entre `received` y la suma de
 `ingestion_rejected`, `spark_rejected` y `valid`. También exige que los aceptados
@@ -35,8 +38,9 @@ idénticos y rechaza todas las lecturas de una clave con mediciones contradictor
 Por eso el histórico y el curado pueden tener distintos conteos y valores. El
 curado es la fuente de métricas y riesgo.
 
-La identidad del lote incluye entrada, umbrales y `pipeline_version=5`. Esto evita
-reutilizar resultados anteriores a la normalización. `--load-only` sigue aceptando
+La identidad del lote incluye entrada, umbrales y `pipeline_version=6`. Esto evita
+reutilizar resultados anteriores a la normalización y a la propagación del
+identificador del manifiesto a los rechazos. `--load-only` sigue aceptando
 los manifiestos anteriores. Regenerar una entrada antigua crea otro identificador.
 Si sus ventanas ya están publicadas, PostgreSQL rechaza la nueva carga y conserva
 los datos existentes. Para comparar versiones, usar una base de pruebas separada.
