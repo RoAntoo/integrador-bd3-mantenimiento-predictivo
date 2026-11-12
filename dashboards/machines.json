@@ -3,7 +3,7 @@
   "title": "Monitoreo y Mantenimiento Predictivo Industrial (BD3)",
   "timezone": "utc",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "refresh": "10s",
   "time": {
     "from": "now-7d",
@@ -36,7 +36,7 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT r.machine_id, m.machine_name, r.risk_level, r.risk_reason, r.calculated_at FROM machine_risk_latest r JOIN machines m ON r.machine_id = m.machine_id WHERE r.machine_id IN ($machine) ORDER BY CASE r.risk_level WHEN 'ROJO' THEN 1 WHEN 'AMARILLO' THEN 2 ELSE 3 END, r.machine_id;"
+          "rawSql": "SELECT r.machine_id, m.machine_name, r.risk_level, r.risk_reason, r.calculated_at, r.window_start AS measured_window_start FROM machine_risk_latest r JOIN machines m ON r.machine_id = m.machine_id WHERE r.machine_id IN ($machine) ORDER BY CASE r.risk_level WHEN 'ROJO' THEN 1 WHEN 'AMARILLO' THEN 2 ELSE 3 END, r.machine_id;"
         }
       ],
       "fieldConfig": {
@@ -72,7 +72,7 @@
           "refId": "A",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT window_start AS \"time\", machine_id AS metric, avg_temp::float AS value FROM sensor_metrics_5m WHERE machine_id IN ($machine) ORDER BY window_start ASC;"
+          "rawSql": "SELECT window_start AS \"time\", machine_id AS metric, avg_temp::float AS value FROM sensor_metrics_5m WHERE machine_id IN ($machine) AND $__timeFilter(window_start) ORDER BY window_start ASC;"
         }
       ]
     },
@@ -87,7 +87,7 @@
           "refId": "A",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT window_start AS \"time\", machine_id AS metric, max_vibration::float AS value FROM sensor_metrics_5m WHERE machine_id IN ($machine) ORDER BY window_start ASC;"
+          "rawSql": "SELECT window_start AS \"time\", machine_id AS metric, max_vibration::float AS value FROM sensor_metrics_5m WHERE machine_id IN ($machine) AND $__timeFilter(window_start) ORDER BY window_start ASC;"
         }
       ]
     }

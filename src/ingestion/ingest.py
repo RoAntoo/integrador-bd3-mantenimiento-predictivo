@@ -9,10 +9,9 @@ import json
 import math
 import os
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import threading
 from typing import Any, Iterator
-
-from src.jsonl import read_jsonl_lines
 
 
 DEFAULT_LAKE_ROOT = Path(__file__).resolve().parents[2] / "artifacts" / "datalake"
@@ -44,11 +43,11 @@ class IngestionResult:
     machines: list[str] = field(default_factory=list)
     raw_files: list[Path] = field(default_factory=list)
     parquet_files: list[Path] = field(default_factory=list)
+    normalized_path: Path | None = None
+    rejected_path: Path | None = None
     manifest_path: Path | None = None
     idempotent_replay: bool = False
     azure_uploaded_blobs: list[str] = field(default_factory=list)
-    accepted_audit_path: Path | None = None
-    rejected_audit_path: Path | None = None
 
 
 def _compute_sha256(file_path: Path) -> str:
@@ -63,16 +62,13 @@ def _compute_sha256(file_path: Path) -> str:
 def _parse_utc_timestamp(raw_ts: Any) -> datetime:
     """Validar y normalizar un timestamp ISO 8601 a UTC."""
     if not isinstance(raw_ts, str) or not raw_ts.strip():
-        raise RecordValidationError("INVALID_TIMESTAMP", "timestamp debe ser un string ISO 8601 no vacío.")
+        raise ValueError("El campo 'timestamp' debe ser un string ISO 8601 no vacío.")
     text = raw_ts.strip()
     if text.endswith("Z"):
         text = text[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError as error:
-        raise RecordValidationError("INVALID_TIMESTAMP", str(error)) from error
+    parsed = datetime.fromisoformat(text)
     if parsed.tzinfo is None:
-        raise RecordValidationError("INVALID_TIMESTAMP", "timestamp debe incluir zona horaria explícita.")
+        raise ValueError("El campo 'timestamp' debe incluir zona horaria explícita.")
     return parsed.astimezone(timezone.utc)
 
 
@@ -83,57 +79,44 @@ def _format_utc_millis(timestamp_dt: datetime) -> str:
     return f"{utc_dt.strftime('%Y-%m-%dT%H:%M:%S')}.{millis:03d}Z"
 
 
-class RecordValidationError(ValueError):
-    """Código estable y detalle legible para la cuarentena de ingesta."""
-
-    def __init__(self, code: str, detail: str):
-        super().__init__(detail)
-        self.code = code
-
-
-def _required_value(record: dict[str, Any], primary: str, fallback: str | None = None) -> Any:
-    name = primary if primary in record else fallback
-    if name is None or name not in record:
-        raise RecordValidationError(f"MISSING_{primary.upper()}", f"Campo obligatorio ausente: {primary}")
-    if record[name] is None:
-        raise RecordValidationError(f"NULL_{primary.upper()}", f"Campo obligatorio nulo: {primary}")
-    return record[name]
-
-
 def _extract_finite_float(record: dict[str, Any], primary: str, fallback: str) -> float:
     """Extraer una medición numérica finita aceptando nombre corto o Contrato A."""
-    raw_val = _required_value(record, primary, fallback)
-    if isinstance(raw_val, bool) or not isinstance(raw_val, (int, float)):
-        raise RecordValidationError(f"INVALID_TYPE_{primary.upper()}", f"Tipo numérico inválido: {primary}/{fallback}")
-    try:
-        value = float(raw_val)
-    except OverflowError as error:
-        raise RecordValidationError(f"NON_FINITE_{primary.upper()}", f"Número no representable: {primary}") from error
-    if not math.isfinite(value):
-        raise RecordValidationError(f"NON_FINITE_{primary.upper()}", f"Valor no finito en {primary}: {value}")
-    return value
+    present = [name for name in (primary, fallback) if name in record]
+    if not present:
+        raise ValueError(f"MISSING_MEASUREMENT: {primary}/{fallback}")
+    converted = {}
+    for name in present:
+        value = record[name]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"INVALID_MEASUREMENT: {name}")
+        try:
+            value = float(value)
+        except OverflowError as error:
+            raise ValueError(f"NON_FINITE_MEASUREMENT: {name}") from error
+        if not math.isfinite(value):
+            raise ValueError(f"NON_FINITE_MEASUREMENT: {name}")
+        converted[name] = value
+    if len(present) == 2 and record[primary] != record[fallback]:
+        raise ValueError(f"CONFLICTING_MEASUREMENT: {primary}/{fallback}")
+    return converted[present[0]]
+
 
 
 def validate_and_normalize_record(raw_line: str) -> tuple[dict[str, Any], str]:
     """Validar una línea JSONL según el Contrato A y devolver (registro_normalizado, YYYY-MM-DD)."""
     stripped = raw_line.strip()
     if not stripped:
-        raise RecordValidationError("EMPTY_LINE", "Línea vacía.")
+        raise ValueError("Línea vacía.")
 
-    try:
-        payload = json.loads(stripped)
-    except json.JSONDecodeError as error:
-        raise RecordValidationError("MALFORMED_JSON", str(error)) from error
+    payload = json.loads(stripped)
     if not isinstance(payload, dict):
-        raise RecordValidationError("NOT_JSON_OBJECT", "Cada línea debe ser un objeto JSON.")
+        raise ValueError("Cada línea debe ser un objeto JSON.")
 
-    machine_id = _required_value(payload, "machine_id")
-    if not isinstance(machine_id, str):
-        raise RecordValidationError("INVALID_TYPE_MACHINE_ID", "machine_id debe ser texto.")
-    if not machine_id.strip():
-        raise RecordValidationError("EMPTY_MACHINE_ID", "machine_id no puede estar vacío.")
+    machine_id = payload.get("machine_id")
+    if not isinstance(machine_id, str) or not machine_id.strip():
+        raise ValueError("El campo 'machine_id' es obligatorio y no puede estar vacío.")
 
-    timestamp_dt = _parse_utc_timestamp(_required_value(payload, "timestamp"))
+    timestamp_dt = _parse_utc_timestamp(payload.get("timestamp"))
     iso_utc = _format_utc_millis(timestamp_dt)
     partition_date = timestamp_dt.strftime("%Y-%m-%d")
 
@@ -145,8 +128,6 @@ def validate_and_normalize_record(raw_line: str) -> tuple[dict[str, Any], str]:
     if isinstance(rpm_raw, float) and not math.isfinite(rpm_raw):
         raise ValueError(f"Valor no finito en rpm: {rpm_raw}")
     rpm = int(rpm_raw) if isinstance(rpm_raw, (int, float)) and not isinstance(rpm_raw, bool) else 0
-    if not -(2**63) <= rpm < 2**63:
-        raise RecordValidationError("OUT_OF_RANGE_RPM", "rpm excede el entero de 64 bits del histórico.")
 
     power_raw = payload.get("power_kw", 0.0)
     power_kw = (
@@ -385,14 +366,11 @@ def ingest_telemetry_batch(
     lake_root: str | Path = DEFAULT_LAKE_ROOT,
     strict: bool = False,
     upload_azure: bool = False,
-    *,
-    batch_id: str | None = None,
-    write_historical: bool = True,
 ) -> IngestionResult:
     """Validar un archivo JSONL entrante, copiar líneas válidas a zona raw y escribir Parquet.
 
-    En modo permisivo cada rechazo se conserva en audit con su identidad y motivo.
-    El pipeline integrado posterga el histórico hasta disponer de válidos de Spark.
+    En modo permisivo (`strict=False`), las líneas inválidas se contabilizan en `invalid_records`
+    y se conservan con su línea original y motivo en un JSONL de rechazos.
     """
     source = Path(input_path).resolve()
     if not source.is_file():
@@ -402,11 +380,8 @@ def ingest_telemetry_batch(
     sha256 = _compute_sha256(source)
     file_size = source.stat().st_size
 
-    raw_lines = read_jsonl_lines(source)
+    raw_lines = source.read_text(encoding="utf-8").splitlines()
     total_received = len(raw_lines)
-    audit_batch_id = batch_id or sha256
-    accepted_audit: list[dict[str, Any]] = []
-    rejected_audit: list[dict[str, Any]] = []
 
     by_date_raw_lines: dict[str, list[str]] = {}
     by_date_records: dict[str, dict[tuple[str, str], dict[str, Any]]] = {}
@@ -414,30 +389,23 @@ def ingest_telemetry_batch(
     timestamps: list[str] = []
     valid_count = 0
     invalid_count = 0
+    normalized_lines = []
+    rejected_lines = []
 
     for line_number, raw_line in enumerate(raw_lines, start=1):
         try:
             normalized, part_date = validate_and_normalize_record(raw_line)
         except (ValueError, json.JSONDecodeError) as error:
             invalid_count += 1
-            rejected_audit.append({
-                "batch_id": audit_batch_id, "line_number": line_number,
-                "stage": "ingestion", "raw_line": raw_line,
-                "rejection_reasons": [getattr(error, "code", "INVALID_RECORD")],
-                "detail": str(error),
-            })
-            if strict:
-                raise ValueError(
-                    f"Error de validación en línea {line_number} de {source.name}: {error}"
-                ) from error
+            rejected_lines.append(json.dumps({
+                "line_number": line_number, "reason": str(error), "raw_line": raw_line,
+            }, ensure_ascii=False))
             continue
 
+        normalized_lines.append(json.dumps({
+            **normalized, "source_line_number": line_number, "source_raw_line": raw_line,
+        }, ensure_ascii=False))
         valid_count += 1
-        accepted_audit.append({
-            "batch_id": audit_batch_id, "line_number": line_number,
-            "raw_line": raw_line,
-            "normalized_line": json.dumps(normalized, ensure_ascii=False, allow_nan=False),
-        })
         machines_set.add(normalized["machine_id"])
         timestamps.append(normalized["timestamp"])
 
@@ -447,15 +415,20 @@ def ingest_telemetry_batch(
         by_date_records.setdefault(part_date, {})[key] = normalized
 
     batch_tag = f"{source.stem}_{sha256[:10]}"
+    audit_dir = lake_dir / "audit"
+    audit_dir.mkdir(parents=True, exist_ok=True)
+    rejected_path = audit_dir / f"{batch_tag}_rejected.jsonl"
+    normalized_path = audit_dir / f"{batch_tag}_normalized.jsonl"
+    with TemporaryDirectory(dir=audit_dir) as temp:
+        for path, lines in ((rejected_path, rejected_lines), (normalized_path, normalized_lines)):
+            staged_path = Path(temp) / path.name
+            staged_path.write_text("".join(line + "\n" for line in lines), encoding="utf-8")
+            staged_path.replace(path)
+    if strict and invalid_count:
+        raise ValueError(f"{invalid_count} líneas inválidas. Auditoría en {rejected_path}")
+
     raw_files: list[Path] = []
     parquet_files: list[Path] = []
-    accepted_audit_path = lake_dir / "audit" / f"{batch_tag}_accepted.jsonl"
-    rejected_audit_path = lake_dir / "audit" / f"{batch_tag}_rejected.jsonl"
-    accepted_audit_path.parent.mkdir(parents=True, exist_ok=True)
-    for target, rows in ((accepted_audit_path, accepted_audit), (rejected_audit_path, rejected_audit)):
-        with target.open("w", encoding="utf-8", newline="\n") as handle:
-            for row in rows:
-                handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     for part_date in sorted(by_date_raw_lines.keys()):
         # 1. Zona Raw particionada por fecha (conserva las líneas válidas del lote)
@@ -467,9 +440,6 @@ def ingest_telemetry_batch(
             "\n".join(by_date_raw_lines[part_date]) + "\n", encoding="utf-8"
         )
         raw_files.append(raw_target)
-
-        if not write_historical:
-            continue
 
         # 2. Zona Histórica en Parquet con partición date=YYYY-MM-DD (idempotente)
         parquet_dir = (
@@ -519,9 +489,6 @@ def ingest_telemetry_batch(
         "max_timestamp": max_ts,
         "dates": sorted_dates,
         "machines_count": len(sorted_machines),
-        "batch_id": audit_batch_id,
-        "accepted_audit": accepted_audit_path.relative_to(lake_dir).as_posix(),
-        "rejected_audit": rejected_audit_path.relative_to(lake_dir).as_posix(),
     }
     idempotent_replay = _update_manifest(manifest_path, manifest_entry)
 
@@ -529,7 +496,7 @@ def ingest_telemetry_batch(
     if upload_azure:
         uploaded_blobs = upload_to_azure_blob(
             lake_root=lake_dir,
-            files_to_upload=[*raw_files, *parquet_files, manifest_path, accepted_audit_path, rejected_audit_path],
+            files_to_upload=[*raw_files, *parquet_files, manifest_path, normalized_path, rejected_path],
         )
 
     return IngestionResult(
@@ -546,11 +513,11 @@ def ingest_telemetry_batch(
         machines=sorted_machines,
         raw_files=raw_files,
         parquet_files=parquet_files,
+        normalized_path=normalized_path,
+        rejected_path=rejected_path,
         manifest_path=manifest_path,
         idempotent_replay=idempotent_replay,
         azure_uploaded_blobs=uploaded_blobs,
-        accepted_audit_path=accepted_audit_path,
-        rejected_audit_path=rejected_audit_path,
     )
 
 

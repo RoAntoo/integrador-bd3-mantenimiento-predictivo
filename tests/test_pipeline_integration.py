@@ -27,7 +27,7 @@ def fetch(query, params):
         return cursor.fetchall()
 
 
-def grafana_panels(machine_id):
+def grafana_panels(machine_id, time_from="1792886400000", time_to="1792972800000"):
     """Consultar los paneles de Grafana para la máquina indicada."""
     port = os.getenv("GRAFANA_PORT", "3000")
     base_url = os.getenv("GRAFANA_URL", f"http://localhost:{port}")
@@ -43,7 +43,7 @@ def grafana_panels(machine_id):
         query["datasource"] = panel["datasource"]
         query["rawSql"] = query["rawSql"].replace("$machine", f"'{machine_id}'")
         queries.append(query)
-    body = json.dumps({"from": "1792886400000", "to": "1792972800000", "queries": queries}).encode()
+    body = json.dumps({"from": time_from, "to": time_to, "queries": queries}).encode()
     with urlopen(Request(f"{base_url}/api/ds/query", data=body, headers=headers), timeout=10) as response:
         return json.load(response)["results"]
 
@@ -116,6 +116,22 @@ def test_real_pipeline_persistence_retry_and_dashboard(tmp_path, monkeypatch):
             values = panels["1"]["frames"][0]["data"]["values"]
             assert values[0] == [machine] and values[2] == ["VERDE"]
             assert all(len(panels[panel]["frames"][0]["data"]["values"][0]) == 4 for panel in ("2", "3"))
+            measured = panels["1"]["frames"][0]
+            field_names = [field["name"] for field in measured["schema"]["fields"]]
+            assert "measured_window_start" in field_names
+            measured_index = field_names.index("measured_window_start")
+            assert measured["data"]["values"][measured_index] == [int(pd.Timestamp("2026-10-25T12:10:00Z").timestamp() * 1000)]
+            narrow = grafana_panels(machine, str(int(pd.Timestamp("2026-10-25T12:04:00Z").timestamp() * 1000)),
+                                   str(int(pd.Timestamp("2026-10-25T12:06:00Z").timestamp() * 1000)))
+            assert all(result["status"] == 200 for result in narrow.values())
+            for panel in ("2", "3"):
+                assert narrow[panel]["frames"][0]["data"]["values"][0] == [int(pd.Timestamp("2026-10-25T12:05:00Z").timestamp() * 1000)]
+            # Un rango posterior excluye las tendencias y conserva el último estado.
+            outside = grafana_panels(machine, "1792972800000", "1793059200000")
+            assert all(result["status"] == 200 for result in outside.values())
+            assert outside["1"]["frames"][0]["data"]["values"][0] == [machine]
+            for panel in ("2", "3"):
+                assert all(not any(frame["data"]["values"]) for frame in outside[panel]["frames"])
         finally:
             owned_ids = [machine, other, new_machine]
             with closing(get_pg_connection()) as connection, connection, connection.cursor() as cursor:

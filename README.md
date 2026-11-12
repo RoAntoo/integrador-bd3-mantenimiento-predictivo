@@ -24,10 +24,6 @@ módulos y puede exportar sin servicios o cargar los resultados en Compose.
 
 ## Ejecutar el pipeline (PR #4)
 
-La [demostración de datos sucios](docs/dirty_data_demo.md) agrega contaminación
-opcional con `--dirty-rate` y `--dirty-seed`, cuarentenas por etapa y balance de
-conteos. Está desactivada por defecto y conserva las anomalías industriales.
-
 Desde la raíz, creá el entorno virtual con Python 3.12, configurá el JDK 17 o
 21 e instalá `requirements.txt` según las instrucciones de instalación más abajo.
 En Windows, con el Python de ese entorno:
@@ -40,10 +36,17 @@ El preset genera tres máquinas durante una hora, con semilla 42 e inicio UTC
 fijo. Para procesar otro lote de Leo usá `--input ruta/al/lote.jsonl`. También
 podés pasar `--seed`, `--start-time`, `--thresholds` o `--work-dir`. La
 consola muestra la ruta `artifacts/pipeline/<batch_id>` y los conteos de ingesta
-y de calidad. El directorio conserva el JSONL previo y posterior a la
-contaminación, `lake/` con raw, auditoría e histórico curado, y `results/` con
-Parquet curado, rechazos de ingesta y Spark, estadísticas, métricas, riesgo y
-alertas JSONL. El histórico integrado se escribe después de la calidad de Spark.
+y de calidad. `balance` concilia recibidos, rechazos de ingesta, rechazos de
+Spark y válidos. Los motivos de ingesta están en `results/ingestion_rejected.jsonl`
+y los de Spark en `results/rejected_telemetry.parquet`, con línea original y número.
+El pipeline acepta nombres cortos o con unidades y rechaza variantes contradictorias.
+El directorio contiene el JSONL original, `lake/` con el raw y el
+Parquet histórico de Leo, y `results/` con Parquet curado, rechazos, estadísticas,
+métricas, riesgo y alertas JSONL.
+
+La versión del contrato forma parte del identificador desde el PR #5. Reprocesar
+una entrada de una versión anterior genera otro lote. `--load-only` permite
+reintentar sus exportaciones existentes.
 
 Si el preset ya está cargado, cambiar la semilla (`--seed`) o los umbrales
 (`--thresholds`) genera otro identificador de lote. PostgreSQL rechaza la carga
@@ -64,6 +67,9 @@ En Linux o macOS reemplazá `.\.venv\Scripts\python.exe` por `.venv/bin/python`.
 Usá los puertos del `.env` y el usuario de Grafana allí configurado. Abrí el
 dashboard `bd3-machines-dashboard` en `http://localhost:3000`. Para el preset,
 elegí un rango absoluto UTC del 25/10/2026 de 00:00 a 01:00 y filtrá una máquina.
+Las tendencias respetan ese rango. El ranking muestra el último estado disponible,
+con `calculated_at` y `measured_window_start`, independientemente del rango elegido.
+La segunda fecha indica el inicio de la ventana de medición de cinco minutos.
 
 Si PostgreSQL confirmó la carga y MongoDB falló, corregí la conexión y retomá
 desde el directorio impreso. En Windows:

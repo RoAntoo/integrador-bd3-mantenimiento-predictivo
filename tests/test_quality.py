@@ -118,6 +118,16 @@ class QualityTests(unittest.TestCase):
             all(row.rejection_reasons == ["PARSE_ERROR"] for row in result.rejected.collect())
         )
 
+    def test_normalized_rejects_keep_input_text_without_source_metadata(self):
+        """Conservar el texto recibido si la línea de origen es nula o está ausente."""
+        missing = self.record(pressure=None, source_line_number=1)
+        null = self.record(pressure=None, source_line_number=2, source_raw_line=None)
+        result = clean_telemetry(self.spark, self.write_lines([missing, null]), normalized_input=True)
+        self.assertEqual(
+            {row.line_number: row.raw_line for row in result.rejected.collect()},
+            {1: missing, 2: null},
+        )
+
     def test_rejects_trailing_content_after_json_object(self):
         valid = self.record()
         lines = [
