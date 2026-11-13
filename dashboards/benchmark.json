@@ -1,0 +1,568 @@
+{
+  "uid": "bd3-benchmark-dashboard",
+  "title": "BD3 | Benchmark de telemetría industrial",
+  "description": "Resultados reales de una corrida verificada; datos sintéticos. Sin reprocesamiento en vivo.",
+  "schemaVersion": 39,
+  "version": 1,
+  "timezone": "utc",
+  "refresh": "",
+  "time": {
+    "from": "2026-10-25T00:00:00+00:00",
+    "to": "2026-10-31T22:40:00+00:00"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "run",
+        "label": "Corrida verificada",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "pg_bd3_uid"
+        },
+        "query": "SELECT run_id FROM benchmark_presentations ORDER BY run_id DESC",
+        "refresh": 1,
+        "current": {
+          "text": "20261113T014052-85e354d4a17648508bfcceca5642f855",
+          "value": "20261113T014052-85e354d4a17648508bfcceca5642f855"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Lecturas válidas procesadas",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 3
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "pg_bd3_uid"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "rawSql": "SELECT (body #>> '{report,counts,valid}')::double precision AS valor FROM benchmark_presentations WHERE run_id = ${run:sqlstring}",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "unit": "locale",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Máquinas simuladas",
+      "type": "stat",
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 3
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "pg_bd3_uid"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "rawSql": "SELECT (body #>> '{report,config,machines}')::double precision AS valor FROM benchmark_presentations WHERE run_id = ${run:sqlstring}",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "unit": "locale",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Lecturas por máquina",
+      "type": "stat",
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 3
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "pg_bd3_uid"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "rawSql": "SELECT (body #>> '{report,config,readings_per_machine}')::double precision AS valor FROM benchmark_presentations WHERE run_id = ${run:sqlstring}",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "unit": "locale",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Registros rechazados",
+      "type": "stat",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 4,
+        "h": 3
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "pg_bd3_uid"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "rawSql": "SELECT (body #>> '{report,counts,rejected}')::double precision AS valor FROM benchmark_presentations WHERE run_id = ${run:sqlstring}",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          },
+          "unit": "locale",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Tiempo total de ejecución",
+      "type": "stat",
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 3
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "pg_bd3_uid"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "rawSql": "SELECT (body #>> '{report,seconds,total}')::double precision AS valor FROM benchmark_presentations WHERE run_id = ${run:sqlstring}",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "unit": "s",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Parquet final en disco",
+      "type": "stat",
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 3
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "pg_bd3_uid"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "rawSql": "SELECT (body #>> '{report,sizes,parquet_bytes}')::double precision AS valor FROM benchmark_presentations WHERE run_id = ${run:sqlstring}",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "unit": "bytes",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Tiempo por etapa · corrida completa",
+      "type": "barchart",
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 12,
+        "h": 6
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "pg_bd3_uid"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "rawSql": "SELECT '1 · Generación' AS etapa, (body #>> '{report,seconds,generation}')::double precision AS segundos FROM benchmark_presentations WHERE run_id = ${run:sqlstring} UNION ALL SELECT '2 · Ingesta' AS etapa, (body #>> '{report,seconds,ingestion}')::double precision AS segundos FROM benchmark_presentations WHERE run_id = ${run:sqlstring} UNION ALL SELECT '3 · Arranque Spark' AS etapa, (body #>> '{report,seconds,spark_startup}')::double precision AS segundos FROM benchmark_presentations WHERE run_id = ${run:sqlstring} UNION ALL SELECT '4 · Procesamiento' AS etapa, (body #>> '{report,seconds,processing}')::double precision AS segundos FROM benchmark_presentations WHERE run_id = ${run:sqlstring}",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "showValue": "always",
+        "legend": {
+          "displayMode": "hidden"
+        },
+        "xField": "etapa"
+      }
+    },
+    {
+      "id": 8,
+      "title": "Último riesgo · todas las máquinas",
+      "type": "piechart",
+      "gridPos": {
+        "x": 12,
+        "y": 3,
+        "w": 12,
+        "h": 6
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "pg_bd3_uid"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "rawSql": "SELECT m->>'risk_level' AS estado, count(*)::int AS equipos FROM benchmark_presentations, jsonb_array_elements(body->'machines') m WHERE run_id=${run:sqlstring} GROUP BY 1 ORDER BY 1",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ROJO"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "AMARILLO"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "yellow"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "VERDE"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "pieType": "donut",
+        "displayLabels": [
+          "name",
+          "value"
+        ],
+        "reduceOptions": {
+          "values": true,
+          "fields": "/^equipos$/",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "values": [
+            "value",
+            "percent"
+          ]
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Temperatura · tres máquinas de ejemplo · ventanas de 5 min",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "pg_bd3_uid"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "rawSql": "SELECT time, metric, value FROM (SELECT (v->>'window_start')::timestamptz AS time, v->>'machine_id' AS metric, (v->>'avg_temp')::double precision AS value FROM benchmark_presentations, jsonb_array_elements(body->'examples') v WHERE run_id=${run:sqlstring}) series WHERE $__timeFilter(time) ORDER BY time",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "celsius",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Vibración máxima · tres máquinas de ejemplo · ventanas de 5 min",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 9,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "pg_bd3_uid"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "rawSql": "SELECT time, metric, value FROM (SELECT (v->>'window_start')::timestamptz AS time, v->>'machine_id' AS metric, (v->>'max_vibration')::double precision AS value FROM benchmark_presentations, jsonb_array_elements(body->'examples') v WHERE run_id=${run:sqlstring}) series WHERE $__timeFilter(time) ORDER BY time",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "suffix:mm/s",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "Alcance de la evidencia",
+      "type": "text",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 24,
+        "h": 3
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "pg_bd3_uid"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**Datos sintéticos · corrida terminada y verificada.** Los indicadores y el riesgo cubren todas las máquinas; las curvas muestran MAQ-001, MAQ-002 y MAQ-003. Riesgo académico por umbrales, no predicción de fallas. Los datos completos permanecen en Parquet; esta vista utiliza resúmenes guardados."
+      }
+    }
+  ]
+}

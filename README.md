@@ -27,8 +27,13 @@ módulos y puede exportar sin servicios o cargar los resultados en Compose.
 Para pruebas de volumen, usar el **modo separado de benchmark** descrito en
 [docs/benchmark.md](docs/benchmark.md). Permite configurar máquinas, lecturas por
 máquina, semilla y salida, procesa Parquet con PySpark sin cargar bases, y registra
-conteos, tiempos y tamaños en JSON/CSV. Los escenarios hasta 15.000.000 son
-objetivos manuales pendientes de medir; la demo de esta sección conserva 180 lecturas.
+conteos, tiempos y tamaños en JSON/CSV. Los escenarios llegan hasta 15.000.000;
+la demo de esta sección conserva 180 lecturas.
+
+Para visualizar una corrida de benchmark ya terminada, consultar
+[publicación de resúmenes y capturas en Grafana](docs/benchmark_grafana.md).
+Incluye la evidencia de la corrida de 15 millones ejecutada por la usuaria y
+permite llevar solo un resumen pequeño a otra computadora, sin repetir Spark.
 
 Desde la raíz, creá el entorno virtual con Python 3.12, configurá el JDK 17 o
 21 e instalá `requirements.txt` según las instrucciones de instalación más abajo.
