@@ -8,6 +8,7 @@ import base64
 import os
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+from urllib.parse import urlencode
 
 import pyarrow.parquet as pq
 
@@ -119,6 +120,14 @@ def grafana_request(path: str, data=None):
                       headers={"Authorization": "Basic " + auth, "Content-Type": "application/json"})
     with urlopen(request, timeout=30) as response:
         return json.load(response)
+
+
+def dashboard_url(payload: dict) -> str:
+    """Enlace de una corrida con su rango real de ventanas, sin arrastrar fechas anteriores."""
+    base = os.getenv("GRAFANA_URL", f"http://localhost:{os.getenv('GRAFANA_PORT', '3000')}")
+    return base.rstrip("/") + "/d/bd3-benchmark-dashboard?" + urlencode({
+        "orgId": 1, "kiosk": "true", "var-run": payload["run_id"],
+        "from": payload["from"], "to": payload["to"], "timezone": "utc"})
 
 
 def ensure_dashboard(dashboard: dict):

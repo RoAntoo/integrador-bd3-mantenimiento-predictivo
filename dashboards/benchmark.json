@@ -8,7 +8,7 @@
   "refresh": "",
   "time": {
     "from": "2026-10-25T00:00:00+00:00",
-    "to": "2026-10-31T22:40:00+00:00"
+    "to": "2026-10-26T01:00:00+00:00"
   },
   "templating": {
     "list": [
@@ -23,8 +23,8 @@
         "query": "SELECT run_id FROM benchmark_presentations ORDER BY run_id DESC",
         "refresh": 1,
         "current": {
-          "text": "20261113T014052-85e354d4a17648508bfcceca5642f855",
-          "value": "20261113T014052-85e354d4a17648508bfcceca5642f855"
+          "text": "20261113T180727-081e6734cea44032ba14905f4094ba89",
+          "value": "20261113T180727-081e6734cea44032ba14905f4094ba89"
         }
       }
     ]

@@ -6,7 +6,7 @@ from pathlib import Path
 from src.benchmark.runner import BenchmarkConfig, run_benchmark
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--machines", type=int, required=True)
     parser.add_argument("--readings-per-machine", type=int, required=True)
@@ -21,6 +21,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--spark-memory", default="2g", help="Heap del driver/JVM, por ejemplo 2g o 4096m.")
     parser.add_argument("--shuffle-partitions", type=int, default=16)
     parser.add_argument("--max-partition-mb", type=int, default=64)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_argument_parser()
     args = parser.parse_args(argv)
     try:
         config = BenchmarkConfig(**vars(args))

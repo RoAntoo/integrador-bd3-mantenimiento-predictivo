@@ -65,6 +65,41 @@ El resumen portátil preparado ocupa 2.153.742 bytes (aproximadamente 2 MB).
 
 ## Preparar otro resumen desde una corrida completa
 
+### Atajo: generar, publicar y abrir con las fechas correctas
+
+Con Docker Desktop, PostgreSQL y Grafana encendidos, se puede hacer todo en un
+comando desde PowerShell en la raíz del proyecto. Por ejemplo, diez máquinas
+con 500 lecturas cada una (5.000 registros):
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.run_benchmark_demo --machines 10 --readings-per-machine 500 --seed 42 --open
+```
+
+El atajo verifica los servicios antes de generar. Ejecuta el benchmark, publica
+solo si terminó correctamente y abre un enlace con `var-run`, `from`, `to` y
+zona UTC. El rango se obtiene de las ventanas realmente guardadas, no se calcula
+a mano. Si no se desea abrir el navegador, omitir `--open`; igualmente se imprime
+el enlace exacto. Admite las mismas opciones de recursos del benchmark habitual.
+
+El comando normal `scripts.run_benchmark` mantiene su comportamiento sin bases.
+El nuevo atajo publica en PostgreSQL explícitamente; no escribe MongoDB ni las
+tablas de la demo. Si falla la publicación, conserva la corrida y muestra cómo
+reintentar sin generar otra vez. No inicia Docker por su cuenta.
+
+Si el lote ya estaba generado, no usar el atajo de generación: publicar su carpeta
+con el comando siguiente y `--open`:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.publish_benchmark --run-dir 'artifacts/benchmarks/<corrida>' --open
+```
+
+Cada publicación ahora imprime un enlace específico para la corrida, con sus
+fechas. Abrirlo evita arrastrar el rango de una corrida anterior. **Cambiar solamente
+el selector de corrida dentro de una pestaña abierta no cambia automáticamente
+las fechas**: para eso abrir el enlace específico de la corrida deseada.
+
+### Preparar sin conectar bases
+
 ```powershell
 .\.venv\Scripts\python.exe -m scripts.publish_benchmark --run-dir 'artifacts/benchmarks/<corrida>' --prepare-only
 ```
