@@ -4,6 +4,7 @@ import argparse
 from dataclasses import dataclass
 from functools import reduce
 from pathlib import Path
+from typing import Callable
 
 from pyspark.sql import Column, DataFrame, SparkSession, Window
 from pyspark.sql import functions as F
@@ -219,10 +220,23 @@ def clean_telemetry(spark: SparkSession, input_path: str | Path, *, normalized_i
                     batch_id: str | None = None) -> QualityResult:
     """Separar lecturas válidas y rechazadas, y contar un lote JSONL local."""
     parsed = _parse_lines(spark, resolve_input_path(input_path), normalized_input, batch_id)
+    return clean_telemetry_frame(parsed)
+
+
+def clean_telemetry_frame(parsed: DataFrame, *,
+                          materialize: Callable[[DataFrame], DataFrame] | None = None) -> QualityResult:
+    """Aplicar las mismas reglas a filas normalizadas, sin releer un JSONL completo.
+
+    La entrada contiene batch_id, line_number, raw_line, _parse_error y los
+    campos de TELEMETRY_SCHEMA. El benchmark materializa la clasificación en
+    Parquet para que las acciones posteriores no repitan los joins y ventanas.
+    """
     classified_content = _classify_content(parsed)
     invalid = classified_content.filter(F.size("rejection_reasons") > 0)
     candidates = classified_content.filter(F.size("rejection_reasons") == 0)
     classified = invalid.unionByName(_classify_duplicates(candidates))
+    if materialize is not None:
+        classified = materialize(classified)
 
     is_rejected = F.size("rejection_reasons") > 0
     is_duplicate = F.array_contains("rejection_reasons", "DUPLICATE_KEY") | F.array_contains(

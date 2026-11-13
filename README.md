@@ -24,6 +24,12 @@ módulos y puede exportar sin servicios o cargar los resultados en Compose.
 
 ## Ejecutar el pipeline (PR #4)
 
+Para pruebas de volumen, usar el **modo separado de benchmark** descrito en
+[docs/benchmark.md](docs/benchmark.md). Permite configurar máquinas, lecturas por
+máquina, semilla y salida, procesa Parquet con PySpark sin cargar bases, y registra
+conteos, tiempos y tamaños en JSON/CSV. Los escenarios hasta 15.000.000 son
+objetivos manuales pendientes de medir; la demo de esta sección conserva 180 lecturas.
+
 Desde la raíz, creá el entorno virtual con Python 3.12, configurá el JDK 17 o
 21 e instalá `requirements.txt` según las instrucciones de instalación más abajo.
 En Windows, con el Python de ese entorno:
